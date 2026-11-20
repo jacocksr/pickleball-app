@@ -9,6 +9,7 @@
   var seen = {};
   var current = 'play';
   var toastTimer;
+  var calm = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
 
   function $(id) { return document.getElementById(id); }
   function h(tag, cls, text) {
@@ -20,10 +21,76 @@
   function names(list) { return list.map(function (p) { return p.name; }).join(' & '); }
   function count(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
 
-  function bounce(el) {
-    el.classList.remove('bounce');
-    void el.offsetWidth;
-    el.classList.add('bounce');
+  /* ---------- Ball bounce ---------- */
+  /* Traces a straight-line path that reflects off the walls of a rectangle or circle. */
+  function trace(shape, x, y, hits) {
+    var a = (Math.random() < 0.5 ? 0 : Math.PI) + (Math.random() < 0.5 ? -1 : 1) * (0.3 + Math.random() * 0.9);
+    var dx = Math.cos(a), dy = Math.sin(a);
+    if (!shape.R) {
+      x = Math.min(Math.max(x, shape.x0), shape.x1);
+      y = Math.min(Math.max(y, shape.y0), shape.y1);
+    }
+    var pts = [{ x: x, y: y }];
+    for (var i = 0; i < hits; i++) {
+      if (shape.R) {
+        var px = x - shape.cx, py = y - shape.cy;
+        var b = px * dx + py * dy;
+        var c = px * px + py * py - shape.R * shape.R;
+        var t = -b + Math.sqrt(Math.max(0, b * b - c));
+        x += dx * t; y += dy * t;
+        var nx = (x - shape.cx) / shape.R, ny = (y - shape.cy) / shape.R;
+        var dot = dx * nx + dy * ny;
+        dx -= 2 * dot * nx; dy -= 2 * dot * ny;
+      } else {
+        var tx = dx > 0 ? (shape.x1 - x) / dx : (dx < 0 ? (shape.x0 - x) / dx : Infinity);
+        var ty = dy > 0 ? (shape.y1 - y) / dy : (dy < 0 ? (shape.y0 - y) / dy : Infinity);
+        var s = Math.min(tx, ty);
+        x += dx * s; y += dy * s;
+        if (tx <= ty) dx = -dx;
+        if (ty <= tx) dy = -dy;
+      }
+      pts.push({ x: x, y: y });
+    }
+    return pts;
+  }
+
+  /* Plays one random bounce across the host element, then the ball rolls back to rest. */
+  function launch(host, mode) {
+    if (!host || !host.animate || (calm && calm.matches)) return;
+    var icon = host.querySelector('.ico');
+    if (!icon) return;
+    if (icon._ball) icon._ball.cancel();
+    var ir = icon.getBoundingClientRect(), hr = host.getBoundingClientRect();
+    var x = ir.left + ir.width / 2, y = ir.top + ir.height / 2;
+    var shape, hits, ballR, minMs, maxMs, speed;
+    if (mode === 'dock') {
+      shape = { cx: hr.left + hr.width / 2, cy: hr.top + hr.height / 2, R: hr.width / 2 - 16 };
+      hits = 6; ballR = 11; minMs = 650; maxMs = 650; speed = 1;
+    } else {
+      var m = 16;
+      shape = { x0: hr.left + m, x1: hr.right - m, y0: hr.top + m, y1: hr.bottom - m };
+      hits = 6; ballR = 9; minMs = 650; maxMs = 950; speed = 1.1;
+    }
+    var pts = trace(shape, x, y, hits);
+    pts.push({ x: x, y: y });
+    var cum = [0], total = 0, i;
+    for (i = 1; i < pts.length; i++) {
+      total += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+      cum.push(total);
+    }
+    if (total < 1) return;
+    var turns = Math.min(3, Math.max(1, Math.round(total / (2 * Math.PI * ballR) * 0.7))) * (Math.random() < 0.5 ? -1 : 1);
+    var frames = pts.map(function (p, k) {
+      var f = cum[k] / total;
+      return {
+        transform: 'translate(' + (p.x - x).toFixed(1) + 'px,' + (p.y - y).toFixed(1) + 'px) rotate(' + (turns * 360 * f).toFixed(1) + 'deg)',
+        offset: f,
+        easing: 'linear'
+      };
+    });
+    frames[frames.length - 2].easing = 'ease-out';
+    var ms = mode === 'dock' ? minMs : Math.min(maxMs, Math.max(minMs, total / speed));
+    icon._ball = icon.animate(frames, { duration: ms, fill: 'none' });
   }
 
   function toast(msg, err) {
@@ -290,7 +357,7 @@
   window.addEventListener('hashchange', function () { show(location.hash.slice(1), true); });
   window.addEventListener('resize', function () { moveInd(false); });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { moveInd(false); });
-  dock.querySelector('.play').addEventListener('click', function () { bounce(dock.querySelector('.bubble')); });
+  dock.querySelector('.play').addEventListener('click', function () { launch(dock.querySelector('.bubble'), 'dock'); });
 
   /* ---------- Settings ---------- */
   var gear = $('gear'), pop = $('settings');
@@ -337,7 +404,7 @@
   $('shuffle').addEventListener('click', function () {
     var round = P.buildRound();
     if (!round) return;
-    bounce($('shuffle'));
+    launch($('shuffle'), 'pill');
     $('shuffleLbl').textContent = 'Shuffle again';
     renderResults(true);
     var first = $('results').firstChild;

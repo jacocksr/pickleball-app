@@ -2,7 +2,7 @@
   'use strict';
   var KEY = 'pickleball-data-v2';
   var OLD = 'pickleball-players-v1';
-  var MIN = 4;
+  var MIN = 3;
   var MAX_SAVED = 500;
   var S = load();
 

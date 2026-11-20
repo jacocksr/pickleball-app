@@ -1,6 +1,6 @@
 # DINK TEAMS
 
-A phone-friendly website that sorts pickleball players into matches and keeps win/loss stats over time. Needs at least 4 players. There is no upper limit.
+A phone-friendly website that sorts pickleball players into matches and keeps win/loss stats over time. Needs at least 3 players. There is no upper limit.
 
 The layout, dock, colors and animations follow the OncoScan design, recolored for pickleball.
 
@@ -19,6 +19,11 @@ The layout, dock, colors and animations follow the OncoScan design, recolored fo
 - Groups of 4 play doubles (2 vs 2).
 - 2 left over play singles.
 - 1 left over sits out. The player who has sat out the least goes first.
+- 3 players: 1 singles match, 1 sitting out.
+
+## Ball animation
+
+Tapping Play or Shuffle sends the pickleball on a new random path. The path is calculated once per tap as a straight-line trajectory that reflects off the walls of the button, with a spin that matches the distance rolled. The browser then plays it as a single short animation. Nothing runs between taps, and it is skipped for people who use reduced motion.
 
 ## Where data lives
 
