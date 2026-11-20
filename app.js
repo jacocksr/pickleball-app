@@ -22,34 +22,52 @@
   function count(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
 
   /* ---------- Ball bounce ---------- */
-  /* Pill: straight-line path that reflects off the walls of a rectangle. */
-  function trace(shape, x, y, hits) {
-    var a = (Math.random() < 0.5 ? 0 : Math.PI) + (Math.random() < 0.5 ? -1 : 1) * (0.3 + Math.random() * 0.9);
-    var dx = Math.cos(a), dy = Math.sin(a);
-    x = Math.min(Math.max(x, shape.x0), shape.x1);
-    y = Math.min(Math.max(y, shape.y0), shape.y1);
-    var pts = [{ x: x, y: y }];
-    for (var i = 0; i < hits; i++) {
-      var tx = dx > 0 ? (shape.x1 - x) / dx : (dx < 0 ? (shape.x0 - x) / dx : Infinity);
-      var ty = dy > 0 ? (shape.y1 - y) / dy : (dy < 0 ? (shape.y0 - y) / dy : Infinity);
-      var s = Math.min(tx, ty);
-      x += dx * s; y += dy * s;
-      if (tx <= ty) dx = -dx;
-      if (ty <= tx) dy = -dy;
-      pts.push({ x: x, y: y });
+  function fold(a, L) {
+    var m = ((a % (2 * L)) + 2 * L) % (2 * L);
+    return m <= L ? m : 2 * L - m;
+  }
+
+  /* Pill: a closed path that leaves the rest point, bounces off the walls with true reflections,
+     and arrives back at the rest point. Built by unfolding the box into a straight line. */
+  function loop(shape, x, y) {
+    var W = shape.x1 - shape.x0, H = shape.y1 - shape.y0;
+    var u = Math.min(Math.max(x - shape.x0, 0), W), v = Math.min(Math.max(y - shape.y0, 0), H);
+    var ni = (Math.random() < 0.3 ? 4 : 2) * (Math.random() < 0.5 ? -1 : 1);
+    var nj = (2 + 2 * Math.floor(Math.random() * 3)) * (Math.random() < 0.5 ? -1 : 1);
+    var ts = [], m, k;
+    for (m = 0; m < Math.abs(ni); m++) {
+      k = ni > 0 ? m + 1 : -m;
+      ts.push((k * W - u) / (ni * W));
     }
+    for (m = 0; m < Math.abs(nj); m++) {
+      k = nj > 0 ? m + 1 : -m;
+      ts.push((k * H - v) / (nj * H));
+    }
+    ts.sort(function (a, b) { return a - b; });
+    var pts = [{ x: x, y: y }];
+    ts.forEach(function (t) {
+      if (t <= 0 || t >= 1) return;
+      pts.push({
+        x: shape.x0 + fold(u + t * ni * W, W),
+        y: shape.y0 + fold(v + t * nj * H, H)
+      });
+    });
+    pts.push({ x: x, y: y });
     return pts;
   }
 
-  /* Play circle: a zig-zag that starts at the wall and loses energy each hop, like a ball settling in a bowl. */
-  function bowl(cx, cy, R, hops) {
+  /* Play circle: launch to the rim, bounce around the rim only (never mid-air), and finish with a
+     near head-on hit so the ball rolls straight back to the center. */
+  function rim(cx, cy, R) {
     var th = Math.random() * 2 * Math.PI;
     var pts = [{ x: cx, y: cy }];
-    for (var i = 0; i < hops; i++) {
-      var r = R * (1 - i * 0.15);
-      pts.push({ x: cx + Math.cos(th) * r, y: cy + Math.sin(th) * r });
-      th += Math.PI + (Math.random() < 0.5 ? -1 : 1) * (0.5 + Math.random() * 0.8);
-    }
+    function at(a) { return { x: cx + Math.cos(a) * R, y: cy + Math.sin(a) * R }; }
+    pts.push(at(th));
+    [0.5 + Math.random() * 0.8, 0.5 + Math.random() * 0.8, 0.5 + Math.random() * 0.8, 0.12 + Math.random() * 0.15].forEach(function (d) {
+      th += Math.PI + (Math.random() < 0.5 ? -1 : 1) * d;
+      pts.push(at(th));
+    });
+    pts.push({ x: cx, y: cy });
     return pts;
   }
 
@@ -64,14 +82,13 @@
     var dockMode = mode === 'dock';
     var pts, ballR, ease;
     if (dockMode) {
-      pts = bowl(x, y, hr.width / 2 - 16, 5);
+      pts = rim(x, y, hr.width / 2 - 16);
       ballR = 11; ease = 'ease-in-out';
     } else {
       var m = 16;
-      pts = trace({ x0: hr.left + m, x1: hr.right - m, y0: hr.top + m, y1: hr.bottom - m }, x, y, 6);
+      pts = loop({ x0: hr.left + m, x1: hr.right - m, y0: hr.top + m, y1: hr.bottom - m }, x, y);
       ballR = 9; ease = 'linear';
     }
-    pts.push({ x: x, y: y });
     var cum = [0], total = 0, i;
     for (i = 1; i < pts.length; i++) {
       total += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
