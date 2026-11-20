@@ -20,6 +20,12 @@
   function names(list) { return list.map(function (p) { return p.name; }).join(' & '); }
   function count(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
 
+  function bounce(el) {
+    el.classList.remove('bounce');
+    void el.offsetWidth;
+    el.classList.add('bounce');
+  }
+
   function toast(msg, err) {
     var t = $('toast');
     t.textContent = msg;
@@ -43,9 +49,7 @@
   function renderPlay() {
     var here = P.here();
     var n = here.length;
-    var c = $('count');
-    c.textContent = n + ' / ' + P.MAX;
-    c.classList.toggle('full', n >= P.MAX);
+    $('count').textContent = count(n, 'player', 'players');
 
     var list = $('chips');
     list.innerHTML = '';
@@ -86,7 +90,6 @@
     dl.innerHTML = '';
     away.forEach(function (p) { var o = document.createElement('option'); o.value = p.name; dl.appendChild(o); });
 
-    $('addBtn').disabled = n >= P.MAX;
     $('shuffle').disabled = n < P.MIN;
     var pv = $('preview');
     if (n < P.MIN) {
@@ -108,7 +111,7 @@
     var dn = 0;
     r.matches.forEach(function (m, i) {
       var card = h('article', 'match' + (animate ? ' enter' : ''));
-      if (animate) card.style.animationDelay = (i * 90) + 'ms';
+      if (animate) card.style.animationDelay = Math.min(i, 12) * 90 + 'ms';
       card.appendChild(h('h3', null, m.type === 'doubles' ? 'Doubles ' + (++dn) : 'Singles'));
       var sides = h('div', 'sides');
       ['a', 'b'].forEach(function (side, k) {
@@ -132,7 +135,7 @@
     });
     if (r.sitting.length) {
       var c = h('article', 'match sitcard' + (animate ? ' enter' : ''));
-      if (animate) c.style.animationDelay = (r.matches.length * 90) + 'ms';
+      if (animate) c.style.animationDelay = Math.min(r.matches.length, 12) * 90 + 'ms';
       c.appendChild(h('h3', null, 'Sitting out'));
       c.appendChild(h('p', null, r.sitting[0].name + ' rests this round.'));
       box.appendChild(c);
@@ -287,6 +290,7 @@
   window.addEventListener('hashchange', function () { show(location.hash.slice(1), true); });
   window.addEventListener('resize', function () { moveInd(false); });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { moveInd(false); });
+  dock.querySelector('.play').addEventListener('click', function () { bounce(dock.querySelector('.bubble')); });
 
   /* ---------- Settings ---------- */
   var gear = $('gear'), pop = $('settings');
@@ -331,12 +335,9 @@
   });
 
   $('shuffle').addEventListener('click', function () {
-    var b = $('shuffle');
     var round = P.buildRound();
     if (!round) return;
-    b.classList.remove('spin');
-    void b.offsetWidth;
-    b.classList.add('spin');
+    bounce($('shuffle'));
     $('shuffleLbl').textContent = 'Shuffle again';
     renderResults(true);
     var first = $('results').firstChild;

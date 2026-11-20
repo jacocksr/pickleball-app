@@ -3,7 +3,7 @@
   var KEY = 'pickleball-data-v2';
   var OLD = 'pickleball-players-v1';
   var MIN = 4;
-  var MAX = 20;
+  var MAX_SAVED = 500;
   var S = load();
 
   function blank() { return { nextId: 1, players: [], games: [], sits: {}, round: null }; }
@@ -75,12 +75,10 @@
     var ex = S.players.filter(function (p) { return p.name.toLowerCase() === low; })[0];
     if (ex) {
       if (ex.here) return { ok: false, msg: ex.name + ' is already here.' };
-      if (here().length >= MAX) return { ok: false, msg: 'Max ' + MAX + ' players today.' };
       ex.here = true; save();
       return { ok: true, msg: 'Welcome back, ' + ex.name + '.' };
     }
-    if (S.players.length >= 100) return { ok: false, msg: 'Player list is full (100).' };
-    if (here().length >= MAX) return { ok: false, msg: 'Max ' + MAX + ' players today.' };
+    if (S.players.length >= MAX_SAVED) return { ok: false, msg: 'Player list is full (' + MAX_SAVED + '). Delete a few first.' };
     S.players.push({ id: S.nextId++, name: name, here: true });
     save();
     return { ok: true, msg: 'Added ' + name + '.' };
@@ -89,7 +87,6 @@
   function setHere(id, val) {
     var p = find(id);
     if (!p) return { ok: false, msg: 'Player not found.' };
-    if (val && !p.here && here().length >= MAX) return { ok: false, msg: 'Max ' + MAX + ' players today.' };
     p.here = !!val; save();
     return { ok: true, msg: '' };
   }
@@ -181,7 +178,7 @@
   function importJSON(text) {
     var d;
     try { d = JSON.parse(text); } catch (e) { return { ok: false, msg: 'That file is not valid JSON.' }; }
-    if (!d || (!Array.isArray(d.players) && !Array.isArray(d.games))) return { ok: false, msg: 'This does not look like a PickleTeams backup.' };
+    if (!d || (!Array.isArray(d.players) && !Array.isArray(d.games))) return { ok: false, msg: 'This does not look like a backup from this app.' };
     S = clean(d, false);
     save();
     return { ok: true, msg: 'Restored ' + S.players.length + ' players and ' + S.games.length + ' games.' };
@@ -192,7 +189,7 @@
   function dropRound() { S.round = null; save(); }
 
   window.PB = { store: {
-    MIN: MIN, MAX: MAX, state: function () { return S; },
+    MIN: MIN, state: function () { return S; },
     here: here, away: away, addPlayer: addPlayer, setHere: setHere, clearToday: clearToday, removePlayer: removePlayer,
     buildRound: buildRound, setWinner: setWinner, deleteGame: deleteGame, stats: stats,
     exportJSON: exportJSON, importJSON: importJSON, resetGames: resetGames, resetAll: resetAll, dropRound: dropRound

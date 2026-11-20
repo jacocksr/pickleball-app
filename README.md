@@ -1,6 +1,6 @@
-# PickleTeams
+# DINK TEAMS
 
-A phone-friendly website that sorts 4 to 20 pickleball players into matches and keeps win/loss stats over time.
+A phone-friendly website that sorts pickleball players into matches and keeps win/loss stats over time. Needs at least 4 players. There is no upper limit.
 
 The layout, dock, colors and animations follow the OncoScan design, recolored for pickleball.
 
