@@ -27,7 +27,7 @@
     return m <= L ? m : 2 * L - m;
   }
 
-  /* Pill: a closed path that leaves the rest point, bounces off the walls with true reflections,
+  /* A closed path that leaves the rest point, bounces off the walls of a box with true reflections,
      and arrives back at the rest point. Built by unfolding the box into a straight line.
      Top and bottom walls always get more hits than left and right. */
   function loop(shape, x, y) {
@@ -58,22 +58,7 @@
     return pts;
   }
 
-  /* Play circle: launch to the rim, bounce around the rim only (never mid-air), and finish with a
-     near head-on hit so the ball rolls straight back to the center. */
-  function rim(cx, cy, R) {
-    var th = Math.random() * 2 * Math.PI;
-    var pts = [{ x: cx, y: cy }];
-    function at(a) { return { x: cx + Math.cos(a) * R, y: cy + Math.sin(a) * R }; }
-    pts.push(at(th));
-    [0.5 + Math.random() * 0.8, 0.5 + Math.random() * 0.8, 0.5 + Math.random() * 0.8, 0.12 + Math.random() * 0.15].forEach(function (d) {
-      th += Math.PI + (Math.random() < 0.5 ? -1 : 1) * d;
-      pts.push(at(th));
-    });
-    pts.push({ x: cx, y: cy });
-    return pts;
-  }
-
-  /* Plays one random bounce across the host element, then the ball rolls back to rest. */
+  /* Plays one random bounce inside the host element, then the ball glides back to rest. */
   function launch(host, mode) {
     if (!host || !host.animate || (calm && calm.matches)) return;
     var icon = host.querySelector('.ico');
@@ -82,14 +67,24 @@
     var ir = icon.getBoundingClientRect(), hr = host.getBoundingClientRect();
     var x = ir.left + ir.width / 2, y = ir.top + ir.height / 2;
     var dockMode = mode === 'dock';
-    var pts, ballR, ease;
+    var pts, ballR, v0, minMs;
     if (dockMode) {
-      pts = rim(x, y, hr.width / 2 - 16);
-      ballR = 11; ease = 'ease-in-out';
+      /* Round button: run the same box bounce on a unit square, then bend the square into the circle
+         so every wall hit lands on the rim and the ball still ends exactly at the center. */
+      var R = hr.width / 2 - 16;
+      var flip = Math.random() < 0.5;
+      pts = loop({ x0: -1, x1: 1, y0: -1, y1: 1 }, 0, 0).map(function (p) {
+        var sx = flip ? p.y : p.x, sy = flip ? p.x : p.y;
+        return {
+          x: x + sx * Math.sqrt(1 - sy * sy / 2) * R,
+          y: y + sy * Math.sqrt(1 - sx * sx / 2) * R
+        };
+      });
+      ballR = 11; v0 = 0.42 + Math.random() * 0.08; minMs = 400;
     } else {
       var m = 12;
       pts = loop({ x0: hr.left + m, x1: hr.right - m, y0: hr.top + m, y1: hr.bottom - m }, x, y);
-      ballR = 9; ease = 'linear';
+      ballR = 9; v0 = 0.8 + Math.random() * 0.2; minMs = 700;
     }
     var cum = [0], total = 0, i;
     for (i = 1; i < pts.length; i++) {
@@ -99,29 +94,22 @@
     if (total < 1) return;
     var turns = Math.min(3, Math.max(1, Math.round(total / (2 * Math.PI * ballR) * 0.7))) * (Math.random() < 0.5 ? -1 : 1);
     var lastSeg = pts.length - 2;
-    var tcum = [0], T = 0, ms;
-    if (dockMode) {
-      for (i = 0; i <= lastSeg; i++) { T += cum[i + 1] - cum[i]; tcum.push(T); }
-      ms = 480;
-    } else {
-      /* Pill: each bounce costs the ball some speed, and the last leg is a long ease-out glide home. */
-      var v0 = 0.8 + Math.random() * 0.2;
-      for (i = 0; i <= lastSeg; i++) {
-        var seg = cum[i + 1] - cum[i];
-        T += (i === lastSeg ? 1.7 : 1) * seg / (v0 * Math.pow(0.94, i));
-        tcum.push(T);
-      }
-      ms = Math.min(1700, Math.max(700, T));
+    var tcum = [0], T = 0;
+    /* Each bounce costs the ball some speed, and the last leg is a long ease-out glide home. */
+    for (i = 0; i <= lastSeg; i++) {
+      var seg = cum[i + 1] - cum[i];
+      T += (i === lastSeg ? 1.7 : 1) * seg / (v0 * Math.pow(0.94, i));
+      tcum.push(T);
     }
     var frames = pts.map(function (p, k) {
       return {
         transform: 'translate(' + (p.x - x).toFixed(1) + 'px,' + (p.y - y).toFixed(1) + 'px) rotate(' + (turns * 360 * cum[k] / total).toFixed(1) + 'deg)',
         offset: tcum[k] / T,
-        easing: ease
+        easing: 'linear'
       };
     });
     frames[lastSeg].easing = 'ease-out';
-    icon._ball = icon.animate(frames, { duration: ms, fill: 'none' });
+    icon._ball = icon.animate(frames, { duration: Math.min(1700, Math.max(minMs, T)), fill: 'none' });
   }
 
   function toast(msg, err) {
