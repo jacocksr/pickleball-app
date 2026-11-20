@@ -3,12 +3,15 @@
   var P = window.PB.store;
   var TABS = ['players', 'stats', 'play', 'history', 'more'];
   var TIMES = String.fromCharCode(215);
+  var FLIP = String.fromCharCode(0x21C4);
   var TROPHY = String.fromCodePoint(0x1F3C6);
   var MEDALS = [0x1F947, 0x1F948, 0x1F949].map(function (c) { return String.fromCodePoint(c); });
   var statFilter = 'all';
   var seen = {};
   var current = 'play';
   var toastTimer;
+  var busy = false;
+  var lastSig = '';
   var calm = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
 
   function $(id) { return document.getElementById(id); }
@@ -117,7 +120,7 @@
     t.textContent = msg;
     t.className = 'toast show' + (err ? ' error' : '');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { t.className = 'toast'; }, 2200);
+    toastTimer = setTimeout(function () { t.className = 'toast'; }, 2600);
   }
 
   function status(el, msg, ok) {
@@ -209,9 +212,14 @@
         m[side].forEach(function (p) { b.appendChild(h('span', null, p.name)); });
         if (m.winner === side) b.appendChild(h('span', 'tag', TROPHY + ' Winner'));
         b.addEventListener('click', function () {
-          var res = P.setWinner(m.id, side);
-          toast(res && res.winner ? 'Win logged for ' + names(m[side]) : 'Result cleared');
-          renderResults(false);
+          if (busy) return;
+          busy = true;
+          P.setWinner(m.id, side).then(function (res) {
+            busy = false;
+            if (!res.ok) { toast(res.msg, true); return; }
+            toast(res.winner ? 'Win logged for ' + names(m[side]) : 'Result cleared');
+            renderResults(false); renderStats(); renderHistory();
+          });
         });
         sides.appendChild(b);
         if (k === 0) sides.appendChild(h('div', 'vs', 'vs'));
@@ -256,15 +264,19 @@
       var rec = all[p.id];
       nm.appendChild(h('small', null, rec ? rec.w + ' W \u00b7 ' + rec.l + ' L' : 'No games yet'));
       li.appendChild(nm);
-      var del = h('button', 'btn small ghost', 'Delete');
-      del.type = 'button';
-      del.addEventListener('click', function () {
-        if (!window.confirm('Delete ' + p.name + '? Their past games stay in History.')) return;
-        P.removePlayer(p.id);
-        renderPlay(); renderRoster();
-        toast(p.name + ' deleted');
-      });
-      li.appendChild(del);
+      if (P.isAdmin()) {
+        var del = h('button', 'btn small ghost', 'Delete');
+        del.type = 'button';
+        del.addEventListener('click', function () {
+          if (!window.confirm('Delete ' + p.name + ' from the shared list? Their past games stay in History.')) return;
+          P.removePlayer(p.id).then(function (res) {
+            if (!res.ok) { toast(res.msg, true); return; }
+            renderAll();
+            toast(p.name + ' deleted');
+          });
+        });
+        li.appendChild(del);
+      }
       ul.appendChild(li);
     });
   }
@@ -318,6 +330,9 @@
     var box = $('histList');
     box.innerHTML = '';
     $('histEmpty').hidden = games.length > 0;
+    $('histHint').textContent = P.isAdmin()
+      ? 'Administrator mode: you can switch or delete any result.'
+      : 'You can switch or delete your most recent game for ' + P.editMinutes() + ' minutes. Older results need an administrator.';
     var lastDay = '';
     games.forEach(function (g) {
       var d = new Date(g.ts);
@@ -330,20 +345,48 @@
       txt.appendChild(document.createTextNode(' beat ' + names(g[lose])));
       txt.appendChild(h('small', null, (g.type === 'doubles' ? 'Doubles' : 'Singles') + ' \u00b7 ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })));
       row.appendChild(txt);
-      var del = h('button', null, TIMES);
-      del.type = 'button';
-      del.setAttribute('aria-label', 'Delete this game');
-      del.addEventListener('click', function () {
-        P.deleteGame(g.id);
-        renderHistory(); renderStats(); renderRoster(); renderResults(false);
-        toast('Game deleted');
-      });
-      row.appendChild(del);
+      if (P.canEdit(g.id)) {
+        var flip = h('button', 'flip', FLIP);
+        flip.type = 'button';
+        flip.setAttribute('aria-label', 'Switch the winner of this game');
+        flip.addEventListener('click', function () {
+          if (busy) return;
+          busy = true;
+          P.flipGame(g.id).then(function (res) {
+            busy = false;
+            if (!res.ok) { toast(res.msg, true); return; }
+            toast('Winner switched');
+            renderAll(); renderResults(false);
+          });
+        });
+        row.appendChild(flip);
+        var del = h('button', null, TIMES);
+        del.type = 'button';
+        del.setAttribute('aria-label', 'Delete this game');
+        del.addEventListener('click', function () {
+          if (busy) return;
+          if (!window.confirm('Delete this game?')) return;
+          busy = true;
+          P.deleteGame(g.id).then(function (res) {
+            busy = false;
+            if (!res.ok) { toast(res.msg, true); return; }
+            toast('Game deleted');
+            renderAll(); renderResults(false);
+          });
+        });
+        row.appendChild(del);
+      }
       box.appendChild(row);
     });
   }
 
-  function renderAll() { renderPlay(); renderRoster(); renderStats(); renderHistory(); }
+  function renderAdmin() {
+    var on = P.isAdmin();
+    $('adminIn').hidden = on;
+    $('adminOut').hidden = !on;
+  }
+
+  function renderAll() { renderPlay(); renderRoster(); renderStats(); renderHistory(); renderAdmin(); }
 
   /* ---------- Router and dock ---------- */
   var dock = document.querySelector('.dock');
@@ -395,24 +438,17 @@
   markTheme();
 
   /* ---------- Events ---------- */
-  $('addForm').addEventListener('submit', function (e) {
-    e.preventDefault();
-    var inp = $('nameInput');
-    var r = P.addPlayer(inp.value);
-    status($('msg'), r.msg, r.ok);
-    if (r.ok) { inp.value = ''; } else { shake(inp); }
-    renderPlay(); renderRoster();
-    inp.focus();
-  });
-
-  $('pForm').addEventListener('submit', function (e) {
-    e.preventDefault();
-    var inp = $('pName');
-    var r = P.addPlayer(inp.value);
-    status($('pMsg'), r.msg, r.ok);
-    if (r.ok) { inp.value = ''; } else { shake(inp); }
-    renderPlay(); renderRoster();
-  });
+  function submitPlayer(inputId, msgId) {
+    var inp = $(inputId);
+    P.addPlayer(inp.value).then(function (r) {
+      status($(msgId), r.msg, r.ok);
+      if (r.ok) { inp.value = ''; } else { shake(inp); }
+      renderPlay(); renderRoster(); renderStats();
+      if (inputId === 'nameInput') inp.focus();
+    });
+  }
+  $('addForm').addEventListener('submit', function (e) { e.preventDefault(); submitPlayer('nameInput', 'msg'); });
+  $('pForm').addEventListener('submit', function (e) { e.preventDefault(); submitPlayer('pName', 'pMsg'); });
 
   $('clearToday').addEventListener('click', function () {
     P.clearToday();
@@ -443,12 +479,28 @@
     var blob = new Blob([P.exportJSON()], { type: 'application/json' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'pickleteams-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+    a.download = 'dink-teams-backup-' + new Date().toISOString().slice(0, 10) + '.json';
     document.body.appendChild(a);
     a.click();
     a.remove();
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
-    status($('dataMsg'), 'Backup downloaded.', true);
+    status($('dataMsg'), 'Copy downloaded.', true);
+  });
+
+  $('adminForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var inp = $('adminPass');
+    P.adminLogin(inp.value).then(function (r) {
+      status($('adminMsg'), r.ok ? 'Signed in as administrator.' : r.msg, r.ok);
+      if (r.ok) inp.value = '';
+      renderAll(); renderResults(false);
+    });
+  });
+  $('adminLogout').addEventListener('click', function () {
+    P.adminLogout().then(function () {
+      status($('adminMsg'), 'Signed out.', true);
+      renderAll(); renderResults(false);
+    });
   });
   $('importBtn').addEventListener('click', function () { $('importFile').click(); });
   $('importFile').addEventListener('change', function (e) {
@@ -456,33 +508,52 @@
     if (!f) return;
     var rd = new FileReader();
     rd.onload = function () {
-      if (!window.confirm('Replace everything on this device with this backup?')) return;
-      var r = P.importJSON(String(rd.result));
-      status($('dataMsg'), r.msg, r.ok);
-      if (r.ok) { seen = {}; $('shuffleLbl').textContent = 'Shuffle teams'; renderAll(); renderResults(false); }
+      if (!window.confirm('Add the players and games in this file to the shared stats? Games already saved are skipped.')) return;
+      P.importBackup(String(rd.result)).then(function (r) {
+        status($('adminMsg'), r.msg, r.ok);
+        if (r.ok) { renderAll(); renderResults(false); }
+      });
     };
     rd.readAsText(f);
     e.target.value = '';
   });
-  $('resetStats').addEventListener('click', function () {
-    if (!window.confirm('Clear all logged games and sit-out counts? Players are kept.')) return;
-    P.resetGames();
-    renderAll(); renderResults(false);
-    toast('Game history cleared');
+  $('importLocalBtn').addEventListener('click', function () {
+    if (!window.confirm('Add the games saved in this browser by the old version to the shared stats? Games already saved are skipped.')) return;
+    P.importLocalOld().then(function (r) {
+      status($('adminMsg'), r.msg, r.ok);
+      if (r.ok) { renderAll(); renderResults(false); }
+    });
   });
-  $('resetAll').addEventListener('click', function () {
-    if (!window.confirm('Erase all players and games on this device?')) return;
-    P.resetAll();
+  $('resetLocal').addEventListener('click', function () {
+    if (!window.confirm('Clear who is here today and the current shuffle on this device?')) return;
+    P.resetLocal();
     seen = {};
     $('shuffleLbl').textContent = 'Shuffle teams';
     renderAll(); renderResults(false);
-    toast('Everything erased');
+    toast('Lineup reset');
   });
 
-  /* ---------- Start ---------- */
+  /* ---------- Start and sync ---------- */
+  function afterRefresh(res) {
+    if (!res.ok) {
+      if (res.first) toast("Can't reach the server. Showing the last saved stats.", true);
+      return;
+    }
+    var s = P.sig();
+    if (s !== lastSig) {
+      lastSig = s;
+      renderAll();
+      renderResults(false);
+    }
+  }
+  function sync() { return P.refresh().then(afterRefresh); }
+
   renderAll();
   renderResults(false);
   if (P.state().round) $('shuffleLbl').textContent = 'Shuffle again';
   var start = location.hash.slice(1);
   show(TABS.indexOf(start) >= 0 ? start : 'play', false);
+  sync();
+  setInterval(function () { if (!document.hidden) sync(); }, 45000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) sync(); });
 })();

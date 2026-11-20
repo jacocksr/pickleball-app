@@ -1,0 +1,4 @@
+input[type=password]{display:block;width:100%;padding:.75rem .9rem;border:1px solid var(--line);border-radius:14px;background:var(--input);color:var(--text);font:inherit;transition:border-color .2s,box-shadow .2s}
+input[type=password]:focus{outline:3px solid var(--brand);outline-offset:0;border-color:var(--brand)}
+.game .flip{font-size:1rem}
+.game .tagline{display:inline-block;margin-left:6px;font-size:.7rem;font-weight:700;padding:1px 8px;border-radius:999px;background:var(--brand-soft);color:var(--brand)}
