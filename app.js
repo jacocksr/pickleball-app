@@ -32,7 +32,7 @@
   function loop(shape, x, y) {
     var W = shape.x1 - shape.x0, H = shape.y1 - shape.y0;
     var u = Math.min(Math.max(x - shape.x0, 0), W), v = Math.min(Math.max(y - shape.y0, 0), H);
-    var ni = (Math.random() < 0.3 ? 4 : 2) * (Math.random() < 0.5 ? -1 : 1);
+    var ni = (Math.random() < 0.15 ? 4 : 2) * (Math.random() < 0.5 ? -1 : 1);
     var nj = (2 + 2 * Math.floor(Math.random() * 3)) * (Math.random() < 0.5 ? -1 : 1);
     var ts = [], m, k;
     for (m = 0; m < Math.abs(ni); m++) {
@@ -96,16 +96,18 @@
     }
     if (total < 1) return;
     var turns = Math.min(3, Math.max(1, Math.round(total / (2 * Math.PI * ballR) * 0.7))) * (Math.random() < 0.5 ? -1 : 1);
+    /* Pill: the ball launches quickly, slows as it loses energy, and glides to a stop at its start. */
     var frames = pts.map(function (p, k) {
       var f = cum[k] / total;
       return {
         transform: 'translate(' + (p.x - x).toFixed(1) + 'px,' + (p.y - y).toFixed(1) + 'px) rotate(' + (turns * 360 * f).toFixed(1) + 'deg)',
-        offset: f,
+        offset: dockMode ? f : 1 - Math.pow(1 - f, 1.35),
         easing: ease
       };
     });
-    frames[frames.length - 2].easing = 'ease-out';
-    var ms = dockMode ? 480 : Math.min(950, Math.max(650, total / 1.1));
+    if (dockMode) frames[frames.length - 2].easing = 'ease-out';
+    var speed = 0.6 + Math.random() * 0.15;
+    var ms = dockMode ? 480 : Math.min(1500, Math.max(700, total / speed));
     icon._ball = icon.animate(frames, { duration: ms, fill: 'none' });
   }
 
