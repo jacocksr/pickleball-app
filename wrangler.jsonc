@@ -12,7 +12,7 @@
     {
       "binding": "DB",
       "database_name": "dink-teams-db",
-      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+      "database_id": "6a094c23-38aa-4c62-aac7-9581610a3d31"
     }
   ],
   "vars": {
