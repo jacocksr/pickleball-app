@@ -28,12 +28,14 @@
   }
 
   /* Pill: a closed path that leaves the rest point, bounces off the walls with true reflections,
-     and arrives back at the rest point. Built by unfolding the box into a straight line. */
+     and arrives back at the rest point. Built by unfolding the box into a straight line.
+     Top and bottom walls always get more hits than left and right. */
   function loop(shape, x, y) {
     var W = shape.x1 - shape.x0, H = shape.y1 - shape.y0;
     var u = Math.min(Math.max(x - shape.x0, 0), W), v = Math.min(Math.max(y - shape.y0, 0), H);
-    var ni = (Math.random() < 0.15 ? 4 : 2) * (Math.random() < 0.5 ? -1 : 1);
-    var nj = (2 + 2 * Math.floor(Math.random() * 3)) * (Math.random() < 0.5 ? -1 : 1);
+    var an = Math.random() < 0.1 ? 4 : 2;
+    var ni = an * (Math.random() < 0.5 ? -1 : 1);
+    var nj = (an + 2 + 2 * Math.floor(Math.random() * 3)) * (Math.random() < 0.5 ? -1 : 1);
     var ts = [], m, k;
     for (m = 0; m < Math.abs(ni); m++) {
       k = ni > 0 ? m + 1 : -m;
@@ -85,7 +87,7 @@
       pts = rim(x, y, hr.width / 2 - 16);
       ballR = 11; ease = 'ease-in-out';
     } else {
-      var m = 16;
+      var m = 12;
       pts = loop({ x0: hr.left + m, x1: hr.right - m, y0: hr.top + m, y1: hr.bottom - m }, x, y);
       ballR = 9; ease = 'linear';
     }
@@ -96,18 +98,29 @@
     }
     if (total < 1) return;
     var turns = Math.min(3, Math.max(1, Math.round(total / (2 * Math.PI * ballR) * 0.7))) * (Math.random() < 0.5 ? -1 : 1);
-    /* Pill: the ball launches quickly, slows as it loses energy, and glides to a stop at its start. */
+    var lastSeg = pts.length - 2;
+    var tcum = [0], T = 0, ms;
+    if (dockMode) {
+      for (i = 0; i <= lastSeg; i++) { T += cum[i + 1] - cum[i]; tcum.push(T); }
+      ms = 480;
+    } else {
+      /* Pill: each bounce costs the ball some speed, and the last leg is a long ease-out glide home. */
+      var v0 = 0.8 + Math.random() * 0.2;
+      for (i = 0; i <= lastSeg; i++) {
+        var seg = cum[i + 1] - cum[i];
+        T += (i === lastSeg ? 1.7 : 1) * seg / (v0 * Math.pow(0.94, i));
+        tcum.push(T);
+      }
+      ms = Math.min(1700, Math.max(700, T));
+    }
     var frames = pts.map(function (p, k) {
-      var f = cum[k] / total;
       return {
-        transform: 'translate(' + (p.x - x).toFixed(1) + 'px,' + (p.y - y).toFixed(1) + 'px) rotate(' + (turns * 360 * f).toFixed(1) + 'deg)',
-        offset: dockMode ? f : 1 - Math.pow(1 - f, 1.35),
+        transform: 'translate(' + (p.x - x).toFixed(1) + 'px,' + (p.y - y).toFixed(1) + 'px) rotate(' + (turns * 360 * cum[k] / total).toFixed(1) + 'deg)',
+        offset: tcum[k] / T,
         easing: ease
       };
     });
-    if (dockMode) frames[frames.length - 2].easing = 'ease-out';
-    var speed = 0.6 + Math.random() * 0.15;
-    var ms = dockMode ? 480 : Math.min(1500, Math.max(700, total / speed));
+    frames[lastSeg].easing = 'ease-out';
     icon._ball = icon.animate(frames, { duration: ms, fill: 'none' });
   }
 
