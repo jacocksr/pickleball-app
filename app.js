@@ -9,6 +9,7 @@
   var seen = {};
   var current = 'play';
   var toastTimer;
+  var calm = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
 
   function $(id) { return document.getElementById(id); }
   function h(tag, cls, text) {
@@ -19,6 +20,97 @@
   }
   function names(list) { return list.map(function (p) { return p.name; }).join(' & '); }
   function count(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+
+  /* ---------- Ball bounce ---------- */
+  function fold(a, L) {
+    var m = ((a % (2 * L)) + 2 * L) % (2 * L);
+    return m <= L ? m : 2 * L - m;
+  }
+
+  /* A closed path that leaves the rest point, bounces off the walls of a box with true reflections,
+     and arrives back at the rest point. Built by unfolding the box into a straight line.
+     Top and bottom walls always get more hits than left and right. */
+  function loop(shape, x, y) {
+    var W = shape.x1 - shape.x0, H = shape.y1 - shape.y0;
+    var u = Math.min(Math.max(x - shape.x0, 0), W), v = Math.min(Math.max(y - shape.y0, 0), H);
+    var an = Math.random() < 0.1 ? 4 : 2;
+    var ni = an * (Math.random() < 0.5 ? -1 : 1);
+    var nj = (an + 2 + 2 * Math.floor(Math.random() * 3)) * (Math.random() < 0.5 ? -1 : 1);
+    var ts = [], m, k;
+    for (m = 0; m < Math.abs(ni); m++) {
+      k = ni > 0 ? m + 1 : -m;
+      ts.push((k * W - u) / (ni * W));
+    }
+    for (m = 0; m < Math.abs(nj); m++) {
+      k = nj > 0 ? m + 1 : -m;
+      ts.push((k * H - v) / (nj * H));
+    }
+    ts.sort(function (a, b) { return a - b; });
+    var pts = [{ x: x, y: y }];
+    ts.forEach(function (t) {
+      if (t <= 0 || t >= 1) return;
+      pts.push({
+        x: shape.x0 + fold(u + t * ni * W, W),
+        y: shape.y0 + fold(v + t * nj * H, H)
+      });
+    });
+    pts.push({ x: x, y: y });
+    return pts;
+  }
+
+  /* Plays one random bounce inside the host element, then the ball glides back to rest. */
+  function launch(host, mode) {
+    if (!host || !host.animate || (calm && calm.matches)) return;
+    var icon = host.querySelector('.ico');
+    if (!icon) return;
+    if (icon._ball) icon._ball.cancel();
+    var ir = icon.getBoundingClientRect(), hr = host.getBoundingClientRect();
+    var x = ir.left + ir.width / 2, y = ir.top + ir.height / 2;
+    var dockMode = mode === 'dock';
+    var pts, ballR, v0, minMs;
+    if (dockMode) {
+      /* Round button: run the same box bounce on a unit square, then bend the square into the circle
+         so every wall hit lands on the rim and the ball still ends exactly at the center. */
+      var R = hr.width / 2 - 16;
+      var flip = Math.random() < 0.5;
+      pts = loop({ x0: -1, x1: 1, y0: -1, y1: 1 }, 0, 0).map(function (p) {
+        var sx = flip ? p.y : p.x, sy = flip ? p.x : p.y;
+        return {
+          x: x + sx * Math.sqrt(1 - sy * sy / 2) * R,
+          y: y + sy * Math.sqrt(1 - sx * sx / 2) * R
+        };
+      });
+      ballR = 11; v0 = 0.42 + Math.random() * 0.08; minMs = 400;
+    } else {
+      var m = 12;
+      pts = loop({ x0: hr.left + m, x1: hr.right - m, y0: hr.top + m, y1: hr.bottom - m }, x, y);
+      ballR = 9; v0 = 0.8 + Math.random() * 0.2; minMs = 700;
+    }
+    var cum = [0], total = 0, i;
+    for (i = 1; i < pts.length; i++) {
+      total += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+      cum.push(total);
+    }
+    if (total < 1) return;
+    var turns = Math.min(3, Math.max(1, Math.round(total / (2 * Math.PI * ballR) * 0.7))) * (Math.random() < 0.5 ? -1 : 1);
+    var lastSeg = pts.length - 2;
+    var tcum = [0], T = 0;
+    /* Each bounce costs the ball some speed, and the last leg is a long ease-out glide home. */
+    for (i = 0; i <= lastSeg; i++) {
+      var seg = cum[i + 1] - cum[i];
+      T += (i === lastSeg ? 1.7 : 1) * seg / (v0 * Math.pow(0.94, i));
+      tcum.push(T);
+    }
+    var frames = pts.map(function (p, k) {
+      return {
+        transform: 'translate(' + (p.x - x).toFixed(1) + 'px,' + (p.y - y).toFixed(1) + 'px) rotate(' + (turns * 360 * cum[k] / total).toFixed(1) + 'deg)',
+        offset: tcum[k] / T,
+        easing: 'linear'
+      };
+    });
+    frames[lastSeg].easing = 'ease-out';
+    icon._ball = icon.animate(frames, { duration: Math.min(1700, Math.max(minMs, T)), fill: 'none' });
+  }
 
   function toast(msg, err) {
     var t = $('toast');
@@ -43,9 +135,7 @@
   function renderPlay() {
     var here = P.here();
     var n = here.length;
-    var c = $('count');
-    c.textContent = n + ' / ' + P.MAX;
-    c.classList.toggle('full', n >= P.MAX);
+    $('count').textContent = count(n, 'player', 'players');
 
     var list = $('chips');
     list.innerHTML = '';
@@ -86,7 +176,6 @@
     dl.innerHTML = '';
     away.forEach(function (p) { var o = document.createElement('option'); o.value = p.name; dl.appendChild(o); });
 
-    $('addBtn').disabled = n >= P.MAX;
     $('shuffle').disabled = n < P.MIN;
     var pv = $('preview');
     if (n < P.MIN) {
@@ -108,7 +197,7 @@
     var dn = 0;
     r.matches.forEach(function (m, i) {
       var card = h('article', 'match' + (animate ? ' enter' : ''));
-      if (animate) card.style.animationDelay = (i * 90) + 'ms';
+      if (animate) card.style.animationDelay = Math.min(i, 12) * 90 + 'ms';
       card.appendChild(h('h3', null, m.type === 'doubles' ? 'Doubles ' + (++dn) : 'Singles'));
       var sides = h('div', 'sides');
       ['a', 'b'].forEach(function (side, k) {
@@ -132,7 +221,7 @@
     });
     if (r.sitting.length) {
       var c = h('article', 'match sitcard' + (animate ? ' enter' : ''));
-      if (animate) c.style.animationDelay = (r.matches.length * 90) + 'ms';
+      if (animate) c.style.animationDelay = Math.min(r.matches.length, 12) * 90 + 'ms';
       c.appendChild(h('h3', null, 'Sitting out'));
       c.appendChild(h('p', null, r.sitting[0].name + ' rests this round.'));
       box.appendChild(c);
@@ -287,6 +376,7 @@
   window.addEventListener('hashchange', function () { show(location.hash.slice(1), true); });
   window.addEventListener('resize', function () { moveInd(false); });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { moveInd(false); });
+  dock.querySelector('.play').addEventListener('click', function () { launch(dock.querySelector('.bubble'), 'dock'); });
 
   /* ---------- Settings ---------- */
   var gear = $('gear'), pop = $('settings');
@@ -331,12 +421,9 @@
   });
 
   $('shuffle').addEventListener('click', function () {
-    var b = $('shuffle');
     var round = P.buildRound();
     if (!round) return;
-    b.classList.remove('spin');
-    void b.offsetWidth;
-    b.classList.add('spin');
+    launch($('shuffle'), 'pill');
     $('shuffleLbl').textContent = 'Shuffle again';
     renderResults(true);
     var first = $('results').firstChild;
