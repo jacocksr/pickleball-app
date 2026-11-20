@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f766e">
+  <title>Pickleball Team Randomizer</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app">
+    <header class="hero">
+      <div class="ball" aria-hidden="true">🏓</div>
+      <h1>Pickleball Teams</h1>
+      <p class="tagline">Add your players. Tap shuffle. Play.</p>
+    </header>
+
+    <section class="card" aria-labelledby="players-title">
+      <div class="card-head">
+        <h2 id="players-title">Players</h2>
+        <span id="count" class="count" aria-live="polite">0 / 20</span>
+      </div>
+
+      <form id="add-form" class="add-form" autocomplete="off">
+        <label for="name-input" class="sr-only">Player name</label>
+        <input id="name-input" type="text" maxlength="20" placeholder="Type a name" enterkeyhint="done">
+        <button type="submit" id="add-btn" class="btn btn-primary">Add</button>
+      </form>
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+
+      <ul id="player-list" class="chips" aria-label="Players"></ul>
+      <p id="empty" class="empty">No players yet. Add at least 4 to start.</p>
+
+      <div class="row">
+        <button type="button" id="clear-btn" class="btn btn-ghost">Clear all</button>
+      </div>
+    </section>
+
+    <section class="cta">
+      <p id="preview" class="preview" aria-live="polite"></p>
+      <button type="button" id="shuffle-btn" class="btn btn-big" disabled>Shuffle teams</button>
+    </section>
+
+    <section id="results" class="results" aria-live="polite"></section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
