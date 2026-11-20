@@ -1,0 +1,14 @@
+{
+  "name": "DINK TEAMS",
+  "short_name": "DINK TEAMS",
+  "description": "Sort pickleball players into doubles and singles matches and track wins.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "theme_color": "#14935a",
+  "background_color": "#edf6ef",
+  "icons": [
+    { "src": "android-chrome-192x192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "android-chrome-512x512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
