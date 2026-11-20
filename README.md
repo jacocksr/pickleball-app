@@ -51,17 +51,17 @@ Everything is saved in your browser (localStorage) on the device you use. Use Mo
 
 ## Icons and link previews
 
-These files live in the repo root:
+All images live in the `images/` folder. `site.webmanifest` stays in the repo root.
 
 | File | Used for |
 |---|---|
-| `favicon.ico`, `favicon-16x16.png`, `favicon-32x32.png` | Browser tab icon |
-| `apple-touch-icon.png` | iPhone and iPad home screen icon |
-| `android-chrome-192x192.png`, `android-chrome-512x512.png` | Android home screen and install icons |
-| `site.webmanifest` | App name, colors and icon list |
-| `og-image.png` | Picture shown when the link is shared (iMessage, social sites). Use 1200 x 630 pixels with a solid background. |
+| `images/favicon.ico`, `images/favicon-16x16.png`, `images/favicon-32x32.png` | Browser tab icon |
+| `images/apple-touch-icon.png` | iPhone and iPad home screen icon |
+| `images/android-chrome-192x192.png`, `images/android-chrome-512x512.png` | Android home screen and install icons |
+| `site.webmanifest` (repo root) | App name, colors and icon list |
+| `images/og-image.png` | Picture shown when the link is shared (iMessage, social sites). Use 1200 x 630 pixels with a solid background. |
 
-The `og:image` tag in `index.html` must use the full address, `https://jacocksr.github.io/pickleball-app/og-image.png`. Messaging apps and social sites cache previews, so a new image can take a while to appear.
+The `og:image` tag in `index.html` must use the full address, `https://jacocksr.github.io/pickleball-app/images/og-image.png`. Messaging apps and social sites cache previews, so a new image can take a while to appear.
 
 ## Files
 
@@ -70,6 +70,8 @@ The `og:image` tag in `index.html` must use the full address, `https://jacocksr.
 - `theme.js`: light, dark and auto theme
 - `store.js`: players, games, stats and backup logic
 - `app.js`: screens, interactions and the ball animation
+- `site.webmanifest`: app name, colors and icon paths
+- `images/`: favicons, app icons and the share image
 
 ## Run it
 
