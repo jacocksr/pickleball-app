@@ -1,27 +1,37 @@
-# Pickleball Team Randomizer
+# PickleTeams
 
-A simple website that sorts 4 to 20 pickleball players into matches.
+A phone-friendly website that sorts 4 to 20 pickleball players into matches and keeps win/loss stats over time.
 
-## How it works
+The layout, dock, colors and animations follow the OncoScan design, recolored for pickleball.
 
-- Add or remove players (names are saved in your browser).
-- Tap **Shuffle teams**.
-- Groups of 4 play doubles (2 vs 2).
-- If 2 players are left over, they play singles.
-- If 1 player is left over, they sit out. The player who has sat out the least goes first.
+## Tabs
 
-| Players | Result |
+| Tab | What it does |
 |---|---|
-| 4 | 1 doubles |
-| 5 | 1 doubles, 1 sitting out |
-| 6 | 1 doubles, 1 singles |
-| 7 | 1 doubles, 1 singles, 1 sitting out |
-| 20 | 5 doubles |
+| Players | Saved player list. Flip the switch for who is here today. |
+| Stats | Wins, losses, win % and streaks. Filter by doubles or singles. |
+| Play (center) | Add today's players, shuffle teams, tap the winning side. |
+| History | Every logged game. Delete any mistakes. |
+| More | Download or restore a JSON backup, reset data, about. |
+
+## Match rules
+
+- Groups of 4 play doubles (2 vs 2).
+- 2 left over play singles.
+- 1 left over sits out. The player who has sat out the least goes first.
+
+## Where data lives
+
+Everything is saved in your browser (localStorage) on the device you use. Use More > Download backup to move it to another device or keep a copy. If you want one shared list across phones, the next step is a small Cloudflare Worker with a D1 database, like OncoScan.
+
+## Files
+
+- `index.html`: page and dock
+- `styles.css`: design tokens, layout, animations
+- `theme.js`: light, dark and auto theme
+- `store.js`: players, games, stats and backup logic
+- `app.js`: screens and interactions
 
 ## Run it
 
-Open `index.html` in any browser. No install needed.
-
-## Put it online (GitHub Pages)
-
-Repo **Settings → Pages → Deploy from a branch → main / (root)**.
+Open `index.html` in any browser, or publish with GitHub Pages (Settings > Pages > main / root).
