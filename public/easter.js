@@ -2,11 +2,12 @@
   'use strict';
   var dock = document.querySelector('.dock');
   if (!dock) return;
-  var NEED = 5, WINDOW = 2000, COUNT = 20, SPAWN = 1000, CALM_MS = 2500, FLOOR_MAX = 9000, HARD_STOP = 16000;
+  var NEED = 5, WINDOW = 2000, COUNT = 20, MAX_SETS = 3, SPAWN = 1000, CALM_MS = 2500, FLOOR_MAX = 12000, HARD_STOP = 16000;
   var G = 2000, E_BALL = 0.55, E_WALL = 0.6, E_FLOOR = 0.6, MU = 0.35, INERTIA = 2 / 3, KF = 1 + 1 / INERTIA;
   var BOUNCE_MIN = 120, STEP = 1 / 240, ITER = 4, SLOP = 0.2, PUSH = 0.8;
   var WAKE_V = 80, SWIPE_R = 16, MAX_V = 2200, MIN_SWIPE = 150;
-  var taps = [], running = false;
+  var BTN_DELAY = 1500, BTN_HOLD = 8000, FUSE_S = 0.5, BLAST = 2100;
+  var taps = [], running = false, show = null;
 
   dock.addEventListener('click', function (e) {
     var a = e.target && e.target.closest ? e.target.closest('a[data-tab="play"]') : null;
@@ -14,7 +15,11 @@
     var now = Date.now();
     taps.push(now);
     taps = taps.filter(function (t) { return now - t <= WINDOW; });
-    if (taps.length >= NEED && !running) { taps = []; start(); }
+    if (taps.length >= NEED) {
+      taps = [];
+      if (!running) start();
+      else if (show && show.sets < MAX_SETS) show.add();
+    }
   }, true);
 
   function bounce(e, v) {
@@ -48,18 +53,39 @@
     var prevTouch = document.documentElement.style.touchAction;
     document.documentElement.style.touchAction = 'none';
 
-    var balls = [];
-    for (var i = 0; i < COUNT; i++) {
-      var r = 13 + Math.random() * 8;
-      balls.push({
-        x: r + Math.random() * Math.max(1, W - 2 * r), y: -r - Math.random() * 60,
-        vx: (Math.random() - 0.5) * 240, vy: Math.random() * 200,
-        r: r, m: r * r, a: Math.random() * 6.28, w: (Math.random() - 0.5) * 6,
-        at: (i * SPAWN) / COUNT + Math.random() * 40,
-        live: false, gone: false, floor: false, touch: false, sleep: false, rest: 0, freed: false
-      });
+    var balls = [], bomb = null, fx = null, btn = null, btnArmed = true, btnAt = 0;
+    var t0 = performance.now(), last = t0, floorOn = true, calm = 0, acc = 0, raf = 0, lp = null, simT = 0, setAt = 0;
+
+    function spawnSet(base) {
+      for (var i = 0; i < COUNT; i++) {
+        var r = 13 + Math.random() * 8;
+        balls.push({
+          x: r + Math.random() * Math.max(1, W - 2 * r), y: -r - Math.random() * 60,
+          vx: (Math.random() - 0.5) * 240, vy: Math.random() * 200,
+          r: r, m: r * r, a: Math.random() * 6.28, w: (Math.random() - 0.5) * 6,
+          at: base + (i * SPAWN) / COUNT + Math.random() * 40,
+          live: false, gone: false, floor: false, touch: false, sleep: false, rest: 0, freed: false, bomb: false
+        });
+      }
     }
-    var t0 = performance.now(), last = t0, floorOn = true, calm = 0, acc = 0, raf = 0, lp = null;
+    spawnSet(0);
+    show = {
+      sets: 1,
+      add: function () {
+        var el = performance.now() - t0;
+        show.sets++;
+        setAt = el; calm = 0; btnArmed = true;
+        spawnSet(el);
+        if (!floorOn) {
+          floorOn = true;
+          balls.forEach(function (b) {
+            if (!b.live || b.gone) return;
+            if (b.y > H - b.r) b.gone = true;
+            else if (b.x > b.r && b.x < W - b.r) b.freed = false;
+          });
+        }
+      }
+    };
 
     function collide(p, q) {
       var dx = q.x - p.x, dy = q.y - p.y, min = p.r + q.r, d2 = dx * dx + dy * dy;
@@ -114,12 +140,14 @@
           b.vx += jt / b.m;
           b.w -= jt / (INERTIA * b.m * b.r);
           b.floor = true;
+          if (b.bomb && b.hitAt === null) b.hitAt = simT;
         }
       }
     }
 
     function step(h, el) {
       var k, m, b, it;
+      simT += h;
       for (k = 0; k < balls.length; k++) {
         b = balls[k];
         if (b.gone || b.sleep) continue;
@@ -134,9 +162,13 @@
         if (b.touch) {
           b.vx *= 1 - 3 * h; b.vy *= 1 - 3 * h; b.w *= 1 - 5 * h;
         }
-        if ((b.floor || b.touch) && b.vx * b.vx + b.vy * b.vy < 225 && Math.abs(b.w * b.r) < 15) b.rest += h;
-        else b.rest = 0;
-        if (b.rest > 0.25) { b.sleep = true; b.vx = 0; b.vy = 0; b.w = 0; }
+        if (b.bomb) {
+          if (b.hitAt === null && ((b.touch && b.vx * b.vx + b.vy * b.vy < 1600 && simT - b.born > 0.6) || simT - b.born > 4)) b.hitAt = simT;
+        } else {
+          if ((b.floor || b.touch) && b.vx * b.vx + b.vy * b.vy < 225 && Math.abs(b.w * b.r) < 15) b.rest += h;
+          else b.rest = 0;
+          if (b.rest > 0.25) { b.sleep = true; b.vx = 0; b.vy = 0; b.w = 0; }
+        }
         b.floor = false; b.touch = false;
         if (b.sleep) continue;
         b.x += b.vx * h; b.y += b.vy * h; b.a += b.w * h;
@@ -155,7 +187,7 @@
     function hit(ax, ay, px, py, pvx, pvy) {
       for (var k = 0; k < balls.length; k++) {
         var b = balls[k];
-        if (!b.live || b.gone) continue;
+        if (!b.live || b.gone || b.bomb) continue;
         if (segDist(b.x, b.y, ax, ay, px, py) > b.r + SWIPE_R) continue;
         wake(b);
         b.vx += (pvx * 0.8 - b.vx) * 0.6;
@@ -191,6 +223,56 @@
       });
     }
 
+    function hideBtn(now) {
+      if (!btn) return;
+      var el = btn;
+      btn = null;
+      if (el.animate) el.animate([{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(0.6)' }], { duration: 180, fill: 'forwards' });
+      setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 200);
+    }
+    function showBtn(el) {
+      btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = 'TNT \uD83D\uDCA5';
+      btn.setAttribute('aria-label', 'Drop the pickleball bomb');
+      btn.style.cssText = 'position:fixed;right:12px;top:32%;z-index:61;padding:.6rem 1.05rem;border-radius:999px;border:2px solid #fff;background:#d92d20;color:#fff;font-family:inherit;font-weight:800;font-size:1rem;letter-spacing:.06em;box-shadow:0 6px 18px rgba(217,45,32,.5);cursor:pointer;touch-action:manipulation';
+      btn.addEventListener('click', function () { hideBtn(); dropBomb(); });
+      document.body.appendChild(btn);
+      if (btn.animate) btn.animate([{ transform: 'scale(0) rotate(-12deg)', opacity: 0 }, { transform: 'scale(1.15) rotate(3deg)', opacity: 1, offset: 0.7 }, { transform: 'scale(1) rotate(0deg)', opacity: 1 }], { duration: 420, easing: 'cubic-bezier(.3,1.4,.5,1)', fill: 'forwards' });
+      btnArmed = false; btnAt = el;
+    }
+
+    function dropBomb() {
+      if (bomb) return;
+      var r = 24;
+      bomb = {
+        x: W * 0.35 + Math.random() * W * 0.3, y: -r - 10, vx: (Math.random() - 0.5) * 60, vy: 300,
+        r: r, m: 3 * r * r, a: 0, w: 0, at: 0, live: true, gone: false, floor: false, touch: false,
+        sleep: false, rest: 0, freed: false, bomb: true, hitAt: null, born: simT
+      };
+      balls.push(bomb);
+    }
+
+    function explode(now) {
+      var bx = bomb.x, by = bomb.y, reach = Math.max(W, H) * 0.9;
+      bomb.gone = true;
+      bomb = null;
+      floorOn = false;
+      calm = 0;
+      balls.forEach(function (b) {
+        if (b.gone || !b.live) return;
+        wake(b);
+        var dx = b.x - bx, dy = b.y - by, d = Math.hypot(dx, dy) || 1;
+        var f = Math.max(0.3, 1 - d / reach), s = BLAST * f;
+        b.vx += (dx / d) * s;
+        b.vy += (dy / d) * s - 700 * f;
+        b.w += (Math.random() - 0.5) * 20;
+        b.freed = true;
+      });
+      fx = { x: bx, y: by, t: now };
+      if (navigator.vibrate) { try { navigator.vibrate(80); } catch (e) {} }
+    }
+
     function draw(b) {
       var s = b.r / 9;
       ctx.save();
@@ -210,6 +292,57 @@
       ctx.restore();
     }
 
+    function drawBomb(b) {
+      var s = b.r / 9;
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.rotate(b.a);
+      ctx.scale(s, s);
+      ctx.translate(-12, -12);
+      ctx.beginPath();
+      ctx.arc(12, 12, 9, 0, 6.2832);
+      ctx.fillStyle = '#1d2b45';
+      ctx.fill();
+      ctx.lineWidth = 1.7;
+      ctx.strokeStyle = '#0b1220';
+      ctx.stroke();
+      ctx.fillStyle = '#7f8fa8';
+      dots.forEach(function (p) { ctx.beginPath(); ctx.arc(p[0], p[1], 1.3, 0, 6.2832); ctx.fill(); });
+      ctx.restore();
+      var burn = b.hitAt === null ? 0 : Math.min(1, (simT - b.hitAt) / FUSE_S), len = 1 - burn;
+      var x0 = b.x + b.r * 0.25, y0 = b.y - b.r * 0.95;
+      var ex = x0 + b.r * 0.5 * len, ey = y0 - b.r * 0.9 * len;
+      ctx.strokeStyle = '#c9a66b';
+      ctx.lineWidth = Math.max(2, b.r * 0.12);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.quadraticCurveTo(x0 + b.r * 0.05, y0 - b.r * 0.6 * len, ex, ey);
+      ctx.stroke();
+      var rr = b.r * (0.22 + 0.12 * Math.random());
+      ctx.fillStyle = Math.random() < 0.5 ? '#ffd23f' : '#ff7a1a';
+      ctx.beginPath(); ctx.arc(ex, ey, rr, 0, 6.2832); ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(ex, ey, rr * 0.45, 0, 6.2832); ctx.fill();
+    }
+
+    function drawFx(now) {
+      var p = (now - fx.t) / 600;
+      if (p >= 1) { fx = null; return; }
+      var rad = p * Math.max(W, H) * 0.7 + 1;
+      var g = ctx.createRadialGradient(fx.x, fx.y, 0, fx.x, fx.y, rad);
+      g.addColorStop(0, 'rgba(255,255,255,' + 0.9 * (1 - p) + ')');
+      g.addColorStop(0.35, 'rgba(255,170,40,' + 0.6 * (1 - p) + ')');
+      g.addColorStop(1, 'rgba(255,90,20,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = 'rgba(255,220,150,' + 0.8 * (1 - p) + ')';
+      ctx.lineWidth = 6 * (1 - p) + 1;
+      ctx.beginPath();
+      ctx.arc(fx.x, fx.y, rad * 0.9, 0, 6.2832);
+      ctx.stroke();
+    }
+
     function finish() {
       cancelAnimationFrame(raf);
       window.removeEventListener('pointerdown', onDown);
@@ -217,7 +350,10 @@
       window.removeEventListener('pointerup', onEnd);
       window.removeEventListener('pointercancel', onEnd);
       document.documentElement.style.touchAction = prevTouch;
+      if (btn && btn.parentNode) btn.parentNode.removeChild(btn);
+      btn = null;
       if (cv.parentNode) cv.parentNode.removeChild(cv);
+      show = null;
       running = false;
     }
 
@@ -227,9 +363,12 @@
       var el = now - t0;
       acc += dt;
       while (acc >= STEP) { step(STEP, el); acc -= STEP; }
-      if (floorOn) {
-        if (el > FLOOR_MAX) openFloor();
-        else if (el > SPAWN + 300) {
+      if (bomb && bomb.hitAt !== null && simT - bomb.hitAt >= FUSE_S) explode(now);
+      if (floorOn && !bomb && btnArmed && !btn && el - setAt > BTN_DELAY) showBtn(el);
+      if (btn && (el - btnAt > BTN_HOLD || !floorOn)) hideBtn();
+      if (floorOn && !bomb) {
+        if (el - setAt > FLOOR_MAX) openFloor();
+        else if (!btn && el > setAt + SPAWN + 300) {
           var busy = false;
           for (k = 0; k < balls.length; k++) {
             b = balls[k];
@@ -244,16 +383,18 @@
         if (!b.live || b.gone) continue;
         if (b.x < -b.r - 30 || b.x > W + b.r + 30 || b.y < -H * 3 || (!floorOn && b.y > H + b.r + 20)) b.gone = true;
       }
+      if (balls.length > 40) balls = balls.filter(function (x) { return !x.gone; });
       var alive = 0;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, W, H);
+      if (fx) drawFx(now);
       for (k = 0; k < balls.length; k++) {
         b = balls[k];
         if (b.gone) continue;
         alive++;
-        if (b.live) draw(b);
+        if (b.live) { if (b.bomb) drawBomb(b); else draw(b); }
       }
-      if (alive === 0 || el > HARD_STOP) { finish(); return; }
+      if ((alive === 0 && !fx) || el - setAt > HARD_STOP) { finish(); return; }
       raf = requestAnimationFrame(frame);
     }
     raf = requestAnimationFrame(frame);
