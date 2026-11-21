@@ -6,7 +6,7 @@
   var G = 2000, E_BALL = 0.55, E_WALL = 0.6, E_FLOOR = 0.6, MU = 0.35, INERTIA = 2 / 3, KF = 1 + 1 / INERTIA;
   var BOUNCE_MIN = 120, STEP = 1 / 240, ITER = 4, SLOP = 0.2, PUSH = 0.8;
   var WAKE_V = 80, SWIPE_R = 16, MAX_V = 2200, MIN_SWIPE = 150;
-  var BTN_DELAY = 1000, FUSE_S = 0.5, BLAST = 2400, LIFT = 900, MAXB = 2600;
+  var BTN_DELAY = 1000, FUSE_S = 0.5, BLAST = 3400, LIFT = 1200, MAXB = 3600;
   var taps = [], running = false, show = null;
 
   dock.addEventListener('click', function (e) {
@@ -266,6 +266,7 @@
       bomb = null;
       calm = 0;
       ceilOn = true;
+      floorOn = false;
       setAt = (now - t0) - SPAWN;
       balls.forEach(function (b) {
         if (b.gone || !b.live) return;
