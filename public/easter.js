@@ -2,12 +2,13 @@
   'use strict';
   var dock = document.querySelector('.dock');
   if (!dock) return;
-  var NEED = 5, WINDOW = 2000, COUNT = 20, MAX_SETS = 3, SPAWN = 1000, CALM_MS = 1500, FLOOR_MAX = 7000, HARD_STOP = 16000;
+  var NEED = 5, WINDOW = 2000, COUNT = 30, MAX_SETS = 3, SPAWN = 1000, CALM_MS = 1500, FLOOR_MAX = 7000, HARD_STOP = 16000;
   var G = 2000, E_BALL = 0.55, E_WALL = 0.6, E_FLOOR = 0.6, MU = 0.35, INERTIA = 2 / 3, KF = 1 + 1 / INERTIA;
   var BOUNCE_MIN = 120, STEP = 1 / 240, ITER = 4, SLOP = 0.2, PUSH = 0.8;
   var WAKE_V = 80, SWIPE_R = 16, MAX_V = 2200, MIN_SWIPE = 150;
-  var BTN_DELAY = 1000, DWELL = 0.35, BLAST = 3400, LIFT = 1200, MAXB = 3600;
+  var BTN_DELAY = 1000, DWELL = 0.5, BLAST = 3400, LIFT = 1200, MAXB = 3600;
   var BOMB_R = 26, BOMB_M = 60, BOMB_G = 1.5, BOMB_V = 500, SINK_S = 2, UPBIAS = 0.3;
+  var BOMB_E = 0.2, BOMB_BOUNCES = 2, BOMB_MIN_V = 150;
   var taps = [], running = false, show = null;
 
   dock.addEventListener('click', function (e) {
@@ -132,7 +133,11 @@
           b.y = H - b.r;
           var jn = 0;
           if (b.vy > 0) {
-            var e = b.bomb ? 0 : bounce(E_FLOOR, b.vy);
+            var e = bounce(E_FLOOR, b.vy);
+            if (b.bomb) {
+              if (b.vy > BOMB_MIN_V && b.bounces < BOMB_BOUNCES) { e = BOMB_E; b.bounces++; }
+              else { e = 0; if (b.hitAt === null) b.hitAt = simT; }
+            }
             jn = (1 + e) * b.vy * b.m;
             b.vy = -e * b.vy;
           }
@@ -142,10 +147,6 @@
           b.vx += jt / b.m;
           b.w -= jt / (INERTIA * b.m * b.r);
           b.floor = true;
-          if (b.bomb) {
-            if (b.vy < 0) b.vy = 0;
-            if (b.hitAt === null) b.hitAt = simT;
-          }
         }
       }
     }
@@ -257,7 +258,7 @@
       bomb = {
         x: W * 0.35 + Math.random() * W * 0.3, y: -r - 10, vx: (Math.random() - 0.5) * 60, vy: BOMB_V,
         r: r, m: BOMB_M * r * r, a: 0, w: 0, at: 0, live: true, gone: false, floor: false, touch: false,
-        sleep: false, rest: 0, freed: false, bomb: true, hitAt: null, born: simT, fuse: tFall + SINK_S
+        sleep: false, rest: 0, freed: false, bomb: true, hitAt: null, bounces: 0, born: simT, fuse: tFall + SINK_S
       };
       balls.push(bomb);
     }
