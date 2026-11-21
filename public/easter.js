@@ -5,7 +5,7 @@
   var NEED = 5, WINDOW = 2000, COUNT = 30, MAX_SETS = 3, SPAWN = 1000, CALM_MS = 1500, FLOOR_MAX = 7000, HARD_STOP = 16000;
   var G = 3800, E_BALL = 0.7, E_WALL = 0.7, E_FLOOR = 0.65, MU = 0.35, INERTIA = 2 / 3, KF = 1 + 1 / INERTIA;
   var BOUNCE_MIN = 40, STEP = 1 / 240, ITER = 5, SLOP = 0.2, PUSH = 0.8;
-  var REST_V = 50, REST_W = 40;
+  var REST_V = 50, REST_W = 40, ROLL_K = 4, ROLL_DEC = 280, SPIN_K = 4;
   var WAKE_V = 80, SWIPE_R = 16, MAX_V = 2200, MIN_SWIPE = 150;
   var BTN_DELAY = 1000, DWELL = 0.5, BLAST = 3400, LIFT = 1200, MAXB = 3600;
   var BOMB_R = 26, BOMB_M = 60, BOMB_GRAV = 4500, BOMB_V = 500, SINK_S = 2, UPBIAS = 0.3;
@@ -153,7 +153,7 @@
     }
 
     function step(h, el) {
-      var k, m, b, it;
+      var k, m, b, it, dv, dw;
       simT += h;
       for (k = 0; k < balls.length; k++) {
         b = balls[k];
@@ -163,10 +163,16 @@
         b.vx *= 1 - 0.1 * h;
         b.w *= 1 - 0.1 * h;
         if (b.floor) {
-          b.vx *= 1 - 3 * h;
-          b.w *= 1 - 3 * h;
+          b.vx *= 1 - ROLL_K * h;
+          b.w *= 1 - ROLL_K * h;
         }
-        if (b.touch && !b.bomb) b.w *= 1 - 2 * h;
+        if (!b.bomb && (b.floor || b.touch)) {
+          dv = ROLL_DEC * h;
+          dw = dv / b.r;
+          b.vx = b.vx > dv ? b.vx - dv : (b.vx < -dv ? b.vx + dv : 0);
+          b.w = b.w > dw ? b.w - dw : (b.w < -dw ? b.w + dw : 0);
+        }
+        if (b.touch && !b.bomb) b.w *= 1 - SPIN_K * h;
         if (!b.bomb) {
           if ((b.floor || b.touch) && b.vx * b.vx + b.vy * b.vy < REST_V * REST_V && Math.abs(b.w * b.r) < REST_W) b.rest += h;
           else b.rest = 0;
