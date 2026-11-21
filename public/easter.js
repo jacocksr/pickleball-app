@@ -2,8 +2,8 @@
   'use strict';
   var dock = document.querySelector('.dock');
   if (!dock) return;
-  var NEED = 5, WINDOW = 2000, COUNT = 24, SPAWN = 1000, FLOOR_MS = 4500, HARD_STOP = 14000;
-  var G = 2000, REST = 0.7, WALL = 0.8, HIT = 0.8;
+  var NEED = 5, WINDOW = 2000, COUNT = 20, SPAWN = 1000, SETTLE_MS = 500, FLOOR_MAX = 6500, HARD_STOP = 14000;
+  var G = 2000, REST = 0.6, WALL = 0.7, HIT = 0.5, STEP = 1 / 240, ITER = 3;
   var taps = [], running = false;
 
   dock.addEventListener('click', function (e) {
@@ -34,27 +34,81 @@
 
     var balls = [];
     for (var i = 0; i < COUNT; i++) {
-      var r = 14 + Math.random() * 10;
+      var r = 13 + Math.random() * 8;
       balls.push({
         x: r + Math.random() * Math.max(1, W - 2 * r), y: -r - Math.random() * 60,
-        vx: (Math.random() - 0.5) * 300, vy: Math.random() * 200,
+        vx: (Math.random() - 0.5) * 260, vy: Math.random() * 200,
         r: r, a: Math.random() * 6.28, w: (Math.random() - 0.5) * 8,
-        at: (i * SPAWN) / COUNT + Math.random() * 40, live: false, gone: false
+        at: (i * SPAWN) / COUNT + Math.random() * 40, live: false, gone: false, floor: false
       });
     }
-    var t0 = performance.now(), last = t0, floorOn = true, raf = 0;
+    var t0 = performance.now(), last = t0, floorOn = true, calm = 0, acc = 0, raf = 0;
 
     function collide(p, q) {
       var dx = q.x - p.x, dy = q.y - p.y, min = p.r + q.r, d2 = dx * dx + dy * dy;
       if (d2 >= min * min || d2 === 0) return;
-      var d = Math.sqrt(d2), nx = dx / d, ny = dy / d, over = (min - d) / 2;
-      p.x -= nx * over; p.y -= ny * over; q.x += nx * over; q.y += ny * over;
-      var vn = (p.vx - q.vx) * nx + (p.vy - q.vy) * ny;
-      if (vn >= 0) return;
-      var mp = p.r * p.r, mq = q.r * q.r;
-      var j = (-(1 + HIT) * vn) / (1 / mp + 1 / mq);
-      p.vx += (j / mp) * nx; p.vy += (j / mp) * ny;
-      q.vx -= (j / mq) * nx; q.vy -= (j / mq) * ny;
+      var d = Math.sqrt(d2), nx = dx / d, ny = dy / d, over = min - d;
+      var mp = p.r * p.r, mq = q.r * q.r, ip = 1 / mp, iq = 1 / mq, sum = ip + iq;
+      p.x -= nx * over * (ip / sum); p.y -= ny * over * (ip / sum);
+      q.x += nx * over * (iq / sum); q.y += ny * over * (iq / sum);
+      var rvx = p.vx - q.vx, rvy = p.vy - q.vy;
+      var vn = rvx * nx + rvy * ny;
+      if (vn < 0) {
+        var e = -vn < 150 ? 0 : HIT;
+        var j = (-(1 + e) * vn) / sum;
+        p.vx += j * ip * nx; p.vy += j * ip * ny;
+        q.vx -= j * iq * nx; q.vy -= j * iq * ny;
+      }
+      var tx = -ny, ty = nx, vt = rvx * tx + rvy * ty;
+      var jt = (-vt * 0.2) / sum;
+      p.vx += jt * ip * tx; p.vy += jt * ip * ty;
+      q.vx -= jt * iq * tx; q.vy -= jt * iq * ty;
+    }
+
+    function bounds() {
+      for (var k = 0; k < balls.length; k++) {
+        var b = balls[k];
+        if (!b.live || b.gone) continue;
+        if (b.x < b.r) { b.x = b.r; if (b.vx < 0) b.vx = -b.vx * WALL; }
+        else if (b.x > W - b.r) { b.x = W - b.r; if (b.vx > 0) b.vx = -b.vx * WALL; }
+        if (floorOn && b.y > H - b.r) {
+          b.y = H - b.r;
+          if (b.vy > 0) b.vy = b.vy * REST > 100 ? -b.vy * REST : 0;
+          b.floor = true;
+        }
+      }
+    }
+
+    function step(h, el) {
+      var k, m, b, it;
+      for (k = 0; k < balls.length; k++) {
+        b = balls[k];
+        if (b.gone) continue;
+        if (!b.live) { if (el >= b.at) b.live = true; else continue; }
+        b.vy += G * h;
+        b.vx *= 1 - 0.15 * h;
+        if (b.floor) {
+          b.vx *= 1 - 4 * h;
+          if (Math.abs(b.vx) < 10) b.vx = 0;
+          b.w = b.vx / b.r;
+        }
+        b.floor = false;
+        b.x += b.vx * h; b.y += b.vy * h; b.a += b.w * h;
+      }
+      for (it = 0; it < ITER; it++) {
+        for (k = 0; k < balls.length; k++) {
+          if (!balls[k].live || balls[k].gone) continue;
+          for (m = k + 1; m < balls.length; m++) {
+            if (balls[m].live && !balls[m].gone) collide(balls[k], balls[m]);
+          }
+        }
+        bounds();
+      }
+    }
+
+    function openFloor() {
+      floorOn = false;
+      balls.forEach(function (b) { if (!b.gone) b.vx += (Math.random() - 0.5) * 160; });
     }
 
     function draw(b) {
@@ -83,39 +137,37 @@
     }
 
     function frame(now) {
-      var dt = Math.min((now - last) / 1000, 0.032);
+      var dt = Math.min((now - last) / 1000, 0.05), k, b;
       last = now;
       var el = now - t0;
-      if (floorOn && el > FLOOR_MS) floorOn = false;
-      var alive = 0, k, b;
+      acc += dt;
+      while (acc >= STEP) { step(STEP, el); acc -= STEP; }
+      if (floorOn) {
+        if (el > FLOOR_MAX) openFloor();
+        else if (el > SPAWN + 300) {
+          var fast = false;
+          for (k = 0; k < balls.length; k++) {
+            b = balls[k];
+            if (b.live && !b.gone && b.vx * b.vx + b.vy * b.vy > 1600) { fast = true; break; }
+          }
+          calm = fast ? 0 : calm + dt * 1000;
+          if (calm > SETTLE_MS) openFloor();
+        }
+      } else {
+        for (k = 0; k < balls.length; k++) {
+          b = balls[k];
+          if (b.live && !b.gone && b.y > H + b.r + 20) b.gone = true;
+        }
+      }
+      var alive = 0;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, W, H);
       for (k = 0; k < balls.length; k++) {
         b = balls[k];
         if (b.gone) continue;
-        if (!b.live) { if (el >= b.at) b.live = true; else { alive++; continue; } }
-        b.vy += G * dt;
-        b.vx *= 1 - 0.15 * dt;
-        b.x += b.vx * dt; b.y += b.vy * dt; b.a += b.w * dt;
-        if (b.x < b.r) { b.x = b.r; b.vx = Math.abs(b.vx) * WALL; b.w *= 0.9; }
-        else if (b.x > W - b.r) { b.x = W - b.r; b.vx = -Math.abs(b.vx) * WALL; b.w *= 0.9; }
-        if (floorOn && b.y > H - b.r && b.vy > 0) {
-          b.y = H - b.r;
-          b.vy = -b.vy * REST;
-          if (Math.abs(b.vy) < 90) b.vy = 0;
-          b.vx *= 0.985;
-          b.w = b.vx / b.r;
-        }
-        if (!floorOn && b.y > H + b.r + 20) { b.gone = true; continue; }
         alive++;
+        if (b.live) draw(b);
       }
-      for (k = 0; k < balls.length; k++) {
-        if (!balls[k].live || balls[k].gone) continue;
-        for (var m = k + 1; m < balls.length; m++) {
-          if (balls[m].live && !balls[m].gone) collide(balls[k], balls[m]);
-        }
-      }
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, W, H);
-      for (k = 0; k < balls.length; k++) { if (balls[k].live && !balls[k].gone) draw(balls[k]); }
       if (alive === 0 || el > HARD_STOP) { finish(); return; }
       raf = requestAnimationFrame(frame);
     }
