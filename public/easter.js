@@ -94,7 +94,7 @@
       var dx = q.x - p.x, dy = q.y - p.y, min = p.r + q.r, d2 = dx * dx + dy * dy;
       if (d2 >= min * min || d2 === 0) return;
       var d = Math.sqrt(d2), nx = dx / d, ny = dy / d;
-      var vn = (p.vx - q.vx) * nx + (p.vy - q.vy) * ny;
+      var vn = (q.vx - p.vx) * nx + (q.vy - p.vy) * ny;
       if (vn < -WAKE_V || p.bomb || q.bomb) { wake(p); wake(q); }
       var ip = p.sleep ? 0 : 1 / p.m, iq = q.sleep ? 0 : 1 / q.m, sum = ip + iq;
       if (sum === 0) return;
@@ -108,8 +108,8 @@
       var jn = 0;
       if (vn < 0) {
         jn = (-(1 + bounce(E_BALL, -vn)) * vn) / sum;
-        p.vx += jn * ip * nx; p.vy += jn * ip * ny;
-        q.vx -= jn * iq * nx; q.vy -= jn * iq * ny;
+        p.vx -= jn * ip * nx; p.vy -= jn * ip * ny;
+        q.vx += jn * iq * nx; q.vy += jn * iq * ny;
       }
       var tx = -ny, ty = nx;
       var vt = (p.vx - q.vx) * tx + (p.vy - q.vy) * ty + p.w * p.r + q.w * q.r;
