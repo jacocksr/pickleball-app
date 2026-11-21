@@ -14,3 +14,9 @@ textarea:focus{outline:3px solid var(--brand);outline-offset:0;border-color:var(
 .ticket small{display:block;color:var(--muted);overflow-wrap:anywhere}
 .ticket.done .msg{opacity:.55}
 .kind{display:inline-block;font-size:.72rem;font-weight:700;padding:1px 10px;border-radius:999px;background:var(--brand-soft);color:var(--brand)}
+.ticket .btn.small.danger{border-radius:999px;border:1.5px solid var(--danger);background:transparent;color:var(--danger);font-weight:800}
+.ticket .btn.small.danger:hover:not(:disabled){background:rgba(179,38,30,.1)}
+[data-theme=dark] .ticket .btn.small.danger:hover:not(:disabled){background:rgba(255,138,128,.16)}
+#adminLogout{border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--text);padding:.55rem 1.1rem}
+[data-theme=dark] #adminLogout{background:var(--head)}
+#adminLogout:hover:not(:disabled){border-color:var(--brand);color:var(--brand)}
