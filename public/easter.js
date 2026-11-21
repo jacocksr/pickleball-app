@@ -2,11 +2,14 @@
   'use strict';
   var dock = document.querySelector('.dock');
   if (!dock) return;
-  var NEED = 5, WINDOW = 2000, COUNT = 20, MAX_SETS = 3, SPAWN = 1000, CALM_MS = 1500, FLOOR_MAX = 7000, HARD_STOP = 16000;
-  var G = 2000, E_BALL = 0.55, E_WALL = 0.6, E_FLOOR = 0.6, MU = 0.35, INERTIA = 2 / 3, KF = 1 + 1 / INERTIA;
-  var BOUNCE_MIN = 120, STEP = 1 / 240, ITER = 4, SLOP = 0.2, PUSH = 0.8;
+  var NEED = 5, WINDOW = 2000, COUNT = 30, MAX_SETS = 3, SPAWN = 1000, CALM_MS = 1500, FLOOR_MAX = 7000, HARD_STOP = 16000;
+  var G = 3800, E_BALL = 0.7, E_WALL = 0.7, E_FLOOR = 0.65, MU = 0.35, INERTIA = 2 / 3, KF = 1 + 1 / INERTIA;
+  var BOUNCE_MIN = 40, STEP = 1 / 240, ITER = 5, SLOP = 0.2, PUSH = 0.8;
+  var REST_V = 50, REST_W = 40, ROLL_K = 4, ROLL_DEC = 280, SPIN_K = 4;
   var WAKE_V = 80, SWIPE_R = 16, MAX_V = 2200, MIN_SWIPE = 150;
-  var BTN_DELAY = 1000, FUSE_S = 0.5, BLAST = 3400, LIFT = 1200, MAXB = 3600;
+  var BTN_DELAY = 1000, DWELL = 0.5, BLAST = 3400, LIFT = 1200, MAXB = 3600;
+  var BOMB_R = 26, BOMB_M = 60, BOMB_GRAV = 4500, BOMB_V = 500, SINK_S = 2, UPBIAS = 0.3;
+  var BOMB_E = 0.2, BOMB_BOUNCES = 2, BOMB_MIN_V = 150;
   var taps = [], running = false, show = null;
 
   dock.addEventListener('click', function (e) {
@@ -23,7 +26,7 @@
   }, true);
 
   function bounce(e, v) {
-    var s = (v - BOUNCE_MIN) / 500;
+    var s = (v - BOUNCE_MIN) / 300;
     return s <= 0 ? 0 : Math.min(e, e * s);
   }
   function wake(b) { if (b.sleep) { b.sleep = false; b.rest = 0; } }
@@ -91,8 +94,8 @@
       var dx = q.x - p.x, dy = q.y - p.y, min = p.r + q.r, d2 = dx * dx + dy * dy;
       if (d2 >= min * min || d2 === 0) return;
       var d = Math.sqrt(d2), nx = dx / d, ny = dy / d;
-      var vn = (p.vx - q.vx) * nx + (p.vy - q.vy) * ny;
-      if (vn < -WAKE_V) { wake(p); wake(q); }
+      var vn = (q.vx - p.vx) * nx + (q.vy - p.vy) * ny;
+      if (vn < -WAKE_V || p.bomb || q.bomb) { wake(p); wake(q); }
       var ip = p.sleep ? 0 : 1 / p.m, iq = q.sleep ? 0 : 1 / q.m, sum = ip + iq;
       if (sum === 0) return;
       var pen = min - d - SLOP;
@@ -105,8 +108,8 @@
       var jn = 0;
       if (vn < 0) {
         jn = (-(1 + bounce(E_BALL, -vn)) * vn) / sum;
-        p.vx += jn * ip * nx; p.vy += jn * ip * ny;
-        q.vx -= jn * iq * nx; q.vy -= jn * iq * ny;
+        p.vx -= jn * ip * nx; p.vy -= jn * ip * ny;
+        q.vx += jn * iq * nx; q.vy += jn * iq * ny;
       }
       var tx = -ny, ty = nx;
       var vt = (p.vx - q.vx) * tx + (p.vy - q.vy) * ty + p.w * p.r + q.w * q.r;
@@ -132,6 +135,10 @@
           var jn = 0;
           if (b.vy > 0) {
             var e = bounce(E_FLOOR, b.vy);
+            if (b.bomb) {
+              if (b.vy > BOMB_MIN_V && b.bounces < BOMB_BOUNCES) { e = BOMB_E; b.bounces++; }
+              else { e = 0; if (b.hitAt === null) b.hitAt = simT; }
+            }
             jn = (1 + e) * b.vy * b.m;
             b.vy = -e * b.vy;
           }
@@ -141,32 +148,33 @@
           b.vx += jt / b.m;
           b.w -= jt / (INERTIA * b.m * b.r);
           b.floor = true;
-          if (b.bomb && b.hitAt === null) b.hitAt = simT;
         }
       }
     }
 
     function step(h, el) {
-      var k, m, b, it;
+      var k, m, b, it, dv, dw;
       simT += h;
       for (k = 0; k < balls.length; k++) {
         b = balls[k];
         if (b.gone || b.sleep) continue;
         if (!b.live) { if (el >= b.at) b.live = true; else continue; }
-        b.vy += G * h;
+        b.vy += (b.bomb ? BOMB_GRAV : G) * h;
         b.vx *= 1 - 0.1 * h;
         b.w *= 1 - 0.1 * h;
         if (b.floor) {
-          b.vx *= 1 - 3 * h;
-          b.w *= 1 - 3 * h;
+          b.vx *= 1 - ROLL_K * h;
+          b.w *= 1 - ROLL_K * h;
         }
-        if (b.touch) {
-          b.vx *= 1 - 3 * h; b.vy *= 1 - 3 * h; b.w *= 1 - 5 * h;
+        if (!b.bomb && (b.floor || b.touch)) {
+          dv = ROLL_DEC * h;
+          dw = dv / b.r;
+          b.vx = b.vx > dv ? b.vx - dv : (b.vx < -dv ? b.vx + dv : 0);
+          b.w = b.w > dw ? b.w - dw : (b.w < -dw ? b.w + dw : 0);
         }
-        if (b.bomb) {
-          if (b.hitAt === null && ((b.touch && b.vx * b.vx + b.vy * b.vy < 1600 && simT - b.born > 0.6) || simT - b.born > 4)) b.hitAt = simT;
-        } else {
-          if ((b.floor || b.touch) && b.vx * b.vx + b.vy * b.vy < 225 && Math.abs(b.w * b.r) < 15) b.rest += h;
+        if (b.touch && !b.bomb) b.w *= 1 - SPIN_K * h;
+        if (!b.bomb) {
+          if ((b.floor || b.touch) && b.vx * b.vx + b.vy * b.vy < REST_V * REST_V && Math.abs(b.w * b.r) < REST_W) b.rest += h;
           else b.rest = 0;
           if (b.rest > 0.25) { b.sleep = true; b.vx = 0; b.vy = 0; b.w = 0; }
         }
@@ -250,12 +258,12 @@
 
     function dropBomb() {
       if (bomb) return;
-      var r = 24, d = H + 10;
-      var tFall = (-300 + Math.sqrt(90000 + 2 * G * d)) / G;
+      var r = BOMB_R, d = H + 10, g = BOMB_GRAV;
+      var tFall = (-BOMB_V + Math.sqrt(BOMB_V * BOMB_V + 2 * g * d)) / g;
       bomb = {
-        x: W * 0.35 + Math.random() * W * 0.3, y: -r - 10, vx: (Math.random() - 0.5) * 60, vy: 300,
-        r: r, m: 3 * r * r, a: 0, w: 0, at: 0, live: true, gone: false, floor: false, touch: false,
-        sleep: false, rest: 0, freed: false, bomb: true, hitAt: null, born: simT, fuse: tFall + FUSE_S + 0.2
+        x: W * 0.35 + Math.random() * W * 0.3, y: -r - 10, vx: (Math.random() - 0.5) * 60, vy: BOMB_V,
+        r: r, m: BOMB_M * r * r, a: 0, w: 0, at: 0, live: true, gone: false, floor: false, touch: false,
+        sleep: false, rest: 0, freed: false, bomb: true, hitAt: null, bounces: 0, born: simT, fuse: tFall + SINK_S
       };
       balls.push(bomb);
     }
@@ -273,8 +281,10 @@
         wake(b);
         var dx = b.x - bx, dy = b.y - by, d = Math.hypot(dx, dy) || 1;
         var f = Math.max(0.3, 1 - d / reach);
-        b.vx += (dx / d) * BLAST * f;
-        b.vy += (dy / d) * BLAST * f - LIFT * f;
+        var ux = dx / d, uy = dy / d - UPBIAS, un = Math.hypot(ux, uy) || 1;
+        ux /= un; uy /= un;
+        b.vx += ux * BLAST * f;
+        b.vy += uy * BLAST * f - LIFT * f;
         var sp = Math.hypot(b.vx, b.vy);
         if (sp > MAXB) { b.vx *= MAXB / sp; b.vy *= MAXB / sp; }
         b.w += (Math.random() - 0.5) * 20;
@@ -320,7 +330,9 @@
       ctx.fillStyle = '#7f8fa8';
       dots.forEach(function (p) { ctx.beginPath(); ctx.arc(p[0], p[1], 1.3, 0, 6.2832); ctx.fill(); });
       ctx.restore();
-      var burn = Math.min(1, (simT - b.born) / b.fuse), len = 1 - burn;
+      var burn = Math.min(1, (simT - b.born) / b.fuse);
+      if (b.hitAt !== null) burn = Math.max(burn, 0.6 + 0.4 * Math.min(1, (simT - b.hitAt) / DWELL));
+      var len = 1 - burn;
       var x0 = b.x + b.r * 0.25, y0 = b.y - b.r * 0.95;
       var ex = x0 + b.r * 0.5 * len, ey = y0 - b.r * 0.9 * len;
       ctx.strokeStyle = '#c9a66b';
@@ -374,7 +386,7 @@
       var el = now - t0;
       acc += dt;
       while (acc >= STEP) { step(STEP, el); acc -= STEP; }
-      if (bomb && simT - bomb.born >= bomb.fuse && (bomb.hitAt !== null || simT - bomb.born > bomb.fuse + 1.5)) explode(now);
+      if (bomb && ((bomb.hitAt !== null && simT - bomb.hitAt >= DWELL) || simT - bomb.born >= bomb.fuse)) explode(now);
       if (floorOn && !bomb && btnArmed && !btn && el - setAt > BTN_DELAY) showBtn();
       if (btn && !floorOn) hideBtn(true);
       if (floorOn && !bomb) {
