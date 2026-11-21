@@ -22,7 +22,7 @@
 <meta name="twitter:description" content="Sort pickleball players into doubles and singles matches and track wins.">
 <meta name="twitter:image" content="https://dink-teams.jacocksr.workers.dev/images/og-image.png">
 <link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="sync.css"><script src="theme.js"></script>
-<script defer src="store.js"></script><script defer src="app.js"></script><script defer src="feedback.js"></script><script defer src="easter.js"></script>
+<script defer src="store.js"></script><script defer src="app.js"></script><script defer src="feedback.js"></script><script defer src="roster.js"></script><script defer src="easter.js"></script>
 </head><body>
 <svg class="sprite" aria-hidden="true" focusable="false"><symbol id="i-ball" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><g fill="currentColor" stroke="none"><circle cx="12" cy="7.2" r="1.1"/><circle cx="7.6" cy="10" r="1.1"/><circle cx="16.4" cy="10" r="1.1"/><circle cx="12" cy="12" r="1.1"/><circle cx="8.4" cy="15" r="1.1"/><circle cx="15.6" cy="15" r="1.1"/><circle cx="12" cy="16.8" r="1.1"/></g></symbol><symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol><symbol id="i-chart" viewBox="0 0 24 24"><path d="M5 20v-8M12 20V5M19 20v-5"/></symbol><symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol><symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></symbol><symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol></svg>
 <header class="top">
@@ -57,7 +57,7 @@
 <div class="panel">
 <form id="pForm" class="add-form" autocomplete="off"><label for="pName" class="sr-only">New player name</label><input id="pName" type="text" maxlength="20" placeholder="Add a new player" autocapitalize="words"><button class="btn primary" type="submit">Add</button></form>
 <p id="pMsg" class="status" role="status" aria-live="polite"></p>
-<p class="muted hint">Everyone sees this list. Use the switch to mark who is here today. Only an administrator can delete a player.</p>
+<p class="muted hint">Everyone sees this list. Use the switch to mark who is here today. Tap Edit to fix a name. Swipe a row left to ask for a player to be deleted. Only an administrator can delete.</p>
 <ul id="roster" class="roster"></ul>
 <p id="rosterEmpty" class="muted empty">No players saved yet.</p>
 </div></section>
