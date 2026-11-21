@@ -17,5 +17,16 @@
   ],
   "vars": {
     "EDIT_WINDOW_MINUTES": "120"
+  },
+  "previews": {
+    "vars": {
+      "EDIT_WINDOW_MINUTES": "120"
+    },
+    "d1_databases": [
+      {
+        "binding": "DB",
+        "database_id": "6a094c23-38aa-4c62-aac7-9581610a3d31"
+      }
+    ]
   }
 }
