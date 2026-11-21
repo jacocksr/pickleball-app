@@ -2,11 +2,11 @@
   'use strict';
   var dock = document.querySelector('.dock');
   if (!dock) return;
-  var NEED = 5, WINDOW = 2000, COUNT = 20, MAX_SETS = 3, SPAWN = 1000, CALM_MS = 2500, FLOOR_MAX = 12000, HARD_STOP = 16000;
+  var NEED = 5, WINDOW = 2000, COUNT = 20, MAX_SETS = 3, SPAWN = 1000, CALM_MS = 1500, FLOOR_MAX = 7000, HARD_STOP = 16000;
   var G = 2000, E_BALL = 0.55, E_WALL = 0.6, E_FLOOR = 0.6, MU = 0.35, INERTIA = 2 / 3, KF = 1 + 1 / INERTIA;
   var BOUNCE_MIN = 120, STEP = 1 / 240, ITER = 4, SLOP = 0.2, PUSH = 0.8;
   var WAKE_V = 80, SWIPE_R = 16, MAX_V = 2200, MIN_SWIPE = 150;
-  var BTN_DELAY = 1500, BTN_HOLD = 8000, FUSE_S = 0.5, BLAST = 2100;
+  var BTN_DELAY = 1000, FUSE_S = 0.5, BLAST = 1300, LIFT = 600;
   var taps = [], running = false, show = null;
 
   dock.addEventListener('click', function (e) {
@@ -53,7 +53,7 @@
     var prevTouch = document.documentElement.style.touchAction;
     document.documentElement.style.touchAction = 'none';
 
-    var balls = [], bomb = null, fx = null, btn = null, btnArmed = true, btnAt = 0;
+    var balls = [], bomb = null, fx = null, btn = null, btnArmed = true;
     var t0 = performance.now(), last = t0, floorOn = true, calm = 0, acc = 0, raf = 0, lp = null, simT = 0, setAt = 0;
 
     function spawnSet(base) {
@@ -223,32 +223,37 @@
       });
     }
 
-    function hideBtn(now) {
+    function hideBtn(slide) {
       if (!btn) return;
       var el = btn;
       btn = null;
-      if (el.animate) el.animate([{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(0.6)' }], { duration: 180, fill: 'forwards' });
-      setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 200);
+      el.style.pointerEvents = 'none';
+      if (el.animate) {
+        if (slide) el.animate([{ transform: 'translateX(0)', opacity: 1 }, { transform: 'translateX(170%)', opacity: 1 }], { duration: 380, easing: 'cubic-bezier(.5,0,.9,.4)', fill: 'forwards' });
+        else el.animate([{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(0.6)' }], { duration: 180, fill: 'forwards' });
+      }
+      setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, slide ? 400 : 200);
     }
-    function showBtn(el) {
+    function showBtn() {
       btn = document.createElement('button');
       btn.type = 'button';
       btn.textContent = 'TNT \uD83D\uDCA5';
       btn.setAttribute('aria-label', 'Drop the pickleball bomb');
       btn.style.cssText = 'position:fixed;right:12px;top:32%;z-index:61;padding:.6rem 1.05rem;border-radius:999px;border:2px solid #fff;background:#d92d20;color:#fff;font-family:inherit;font-weight:800;font-size:1rem;letter-spacing:.06em;box-shadow:0 6px 18px rgba(217,45,32,.5);cursor:pointer;touch-action:manipulation';
-      btn.addEventListener('click', function () { hideBtn(); dropBomb(); });
+      btn.addEventListener('click', function () { hideBtn(false); dropBomb(); });
       document.body.appendChild(btn);
       if (btn.animate) btn.animate([{ transform: 'scale(0) rotate(-12deg)', opacity: 0 }, { transform: 'scale(1.15) rotate(3deg)', opacity: 1, offset: 0.7 }, { transform: 'scale(1) rotate(0deg)', opacity: 1 }], { duration: 420, easing: 'cubic-bezier(.3,1.4,.5,1)', fill: 'forwards' });
-      btnArmed = false; btnAt = el;
+      btnArmed = false;
     }
 
     function dropBomb() {
       if (bomb) return;
-      var r = 24;
+      var r = 24, d = H + 10;
+      var tFall = (-300 + Math.sqrt(90000 + 2 * G * d)) / G;
       bomb = {
         x: W * 0.35 + Math.random() * W * 0.3, y: -r - 10, vx: (Math.random() - 0.5) * 60, vy: 300,
         r: r, m: 3 * r * r, a: 0, w: 0, at: 0, live: true, gone: false, floor: false, touch: false,
-        sleep: false, rest: 0, freed: false, bomb: true, hitAt: null, born: simT
+        sleep: false, rest: 0, freed: false, bomb: true, hitAt: null, born: simT, fuse: tFall + FUSE_S + 0.2
       };
       balls.push(bomb);
     }
@@ -257,17 +262,16 @@
       var bx = bomb.x, by = bomb.y, reach = Math.max(W, H) * 0.9;
       bomb.gone = true;
       bomb = null;
-      floorOn = false;
       calm = 0;
+      setAt = (now - t0) - SPAWN;
       balls.forEach(function (b) {
         if (b.gone || !b.live) return;
         wake(b);
         var dx = b.x - bx, dy = b.y - by, d = Math.hypot(dx, dy) || 1;
-        var f = Math.max(0.3, 1 - d / reach), s = BLAST * f;
-        b.vx += (dx / d) * s;
-        b.vy += (dy / d) * s - 700 * f;
+        var f = Math.max(0.3, 1 - d / reach);
+        b.vx += (dx / d) * BLAST * f;
+        b.vy += (dy / d) * BLAST * f - LIFT * f;
         b.w += (Math.random() - 0.5) * 20;
-        b.freed = true;
       });
       fx = { x: bx, y: by, t: now };
       if (navigator.vibrate) { try { navigator.vibrate(80); } catch (e) {} }
@@ -309,7 +313,7 @@
       ctx.fillStyle = '#7f8fa8';
       dots.forEach(function (p) { ctx.beginPath(); ctx.arc(p[0], p[1], 1.3, 0, 6.2832); ctx.fill(); });
       ctx.restore();
-      var burn = b.hitAt === null ? 0 : Math.min(1, (simT - b.hitAt) / FUSE_S), len = 1 - burn;
+      var burn = Math.min(1, (simT - b.born) / b.fuse), len = 1 - burn;
       var x0 = b.x + b.r * 0.25, y0 = b.y - b.r * 0.95;
       var ex = x0 + b.r * 0.5 * len, ey = y0 - b.r * 0.9 * len;
       ctx.strokeStyle = '#c9a66b';
@@ -363,12 +367,12 @@
       var el = now - t0;
       acc += dt;
       while (acc >= STEP) { step(STEP, el); acc -= STEP; }
-      if (bomb && bomb.hitAt !== null && simT - bomb.hitAt >= FUSE_S) explode(now);
-      if (floorOn && !bomb && btnArmed && !btn && el - setAt > BTN_DELAY) showBtn(el);
-      if (btn && (el - btnAt > BTN_HOLD || !floorOn)) hideBtn();
+      if (bomb && simT - bomb.born >= bomb.fuse && (bomb.hitAt !== null || simT - bomb.born > bomb.fuse + 1.5)) explode(now);
+      if (floorOn && !bomb && btnArmed && !btn && el - setAt > BTN_DELAY) showBtn();
+      if (btn && !floorOn) hideBtn(true);
       if (floorOn && !bomb) {
         if (el - setAt > FLOOR_MAX) openFloor();
-        else if (!btn && el > setAt + SPAWN + 300) {
+        else if (el > setAt + SPAWN + 300) {
           var busy = false;
           for (k = 0; k < balls.length; k++) {
             b = balls[k];
