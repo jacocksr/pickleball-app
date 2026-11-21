@@ -143,6 +143,15 @@ export async function handleTickets(request, env, ctx) {
       need(r.meta.changes > 0, 'Ticket not found.', 404, 'NOT_FOUND');
       return json({ ok: true });
     }
+    if (path === '/api/admin/tickets/delete') {
+      const id = Number(b.id);
+      need(Number.isInteger(id) && id > 0, 'Invalid ticket.');
+      const row = await env.DB.prepare('SELECT status FROM tickets WHERE id=?').bind(id).first();
+      need(row, 'Ticket not found.', 404, 'NOT_FOUND');
+      need(row.status === 'done', 'Mark the ticket done before deleting it.', 409, 'NOT_DONE');
+      await env.DB.prepare("DELETE FROM tickets WHERE id=? AND status='done'").bind(id).run();
+      return json({ ok: true });
+    }
     return json({ error: 'Not found' }, 404);
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message, code: e.code }, e.status);
