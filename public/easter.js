@@ -6,7 +6,7 @@
   var G = 2000, E_BALL = 0.55, E_WALL = 0.6, E_FLOOR = 0.6, MU = 0.35, INERTIA = 2 / 3, KF = 1 + 1 / INERTIA;
   var BOUNCE_MIN = 120, STEP = 1 / 240, ITER = 4, SLOP = 0.2, PUSH = 0.8;
   var WAKE_V = 80, SWIPE_R = 16, MAX_V = 2200, MIN_SWIPE = 150;
-  var BTN_DELAY = 1000, FUSE_S = 0.5, BLAST = 1300, LIFT = 600;
+  var BTN_DELAY = 1000, FUSE_S = 0.5, BLAST = 2400, LIFT = 900, MAXB = 2600;
   var taps = [], running = false, show = null;
 
   dock.addEventListener('click', function (e) {
@@ -53,7 +53,7 @@
     var prevTouch = document.documentElement.style.touchAction;
     document.documentElement.style.touchAction = 'none';
 
-    var balls = [], bomb = null, fx = null, btn = null, btnArmed = true;
+    var balls = [], bomb = null, fx = null, btn = null, btnArmed = true, ceilOn = false;
     var t0 = performance.now(), last = t0, floorOn = true, calm = 0, acc = 0, raf = 0, lp = null, simT = 0, setAt = 0;
 
     function spawnSet(base) {
@@ -74,7 +74,7 @@
       add: function () {
         var el = performance.now() - t0;
         show.sets++;
-        setAt = el; calm = 0; btnArmed = true;
+        setAt = el; calm = 0; btnArmed = true; ceilOn = false;
         spawnSet(el);
         if (!floorOn) {
           floorOn = true;
@@ -126,6 +126,7 @@
           if (b.x < b.r) { b.x = b.r; if (b.vx < 0) b.vx = -b.vx * bounce(E_WALL, -b.vx); }
           else if (b.x > W - b.r) { b.x = W - b.r; if (b.vx > 0) b.vx = -b.vx * bounce(E_WALL, b.vx); }
         }
+        if (ceilOn && b.y < b.r) { b.y = b.r; if (b.vy < 0) b.vy = -b.vy * bounce(E_WALL, -b.vy); }
         if (floorOn && b.y > H - b.r) {
           b.y = H - b.r;
           var jn = 0;
@@ -216,6 +217,7 @@
 
     function openFloor() {
       floorOn = false;
+      ceilOn = false;
       balls.forEach(function (b) {
         if (b.gone) return;
         wake(b);
@@ -263,6 +265,7 @@
       bomb.gone = true;
       bomb = null;
       calm = 0;
+      ceilOn = true;
       setAt = (now - t0) - SPAWN;
       balls.forEach(function (b) {
         if (b.gone || !b.live) return;
@@ -271,7 +274,10 @@
         var f = Math.max(0.3, 1 - d / reach);
         b.vx += (dx / d) * BLAST * f;
         b.vy += (dy / d) * BLAST * f - LIFT * f;
+        var sp = Math.hypot(b.vx, b.vy);
+        if (sp > MAXB) { b.vx *= MAXB / sp; b.vy *= MAXB / sp; }
         b.w += (Math.random() - 0.5) * 20;
+        b.freed = false;
       });
       fx = { x: bx, y: by, t: now };
       if (navigator.vibrate) { try { navigator.vibrate(80); } catch (e) {} }
