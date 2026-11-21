@@ -1,0 +1,9 @@
+# Code owners are asked to review every pull request that touches their files.
+# The repository owner is the required reviewer for everything.
+* @jacocksr
+
+# Sensitive areas, listed again on purpose so they stay protected
+# even if the line above is ever changed.
+/src/ @jacocksr
+/wrangler.jsonc @jacocksr
+/.github/ @jacocksr
