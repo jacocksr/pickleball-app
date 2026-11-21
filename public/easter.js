@@ -132,7 +132,7 @@
           b.y = H - b.r;
           var jn = 0;
           if (b.vy > 0) {
-            var e = bounce(E_FLOOR, b.vy);
+            var e = b.bomb ? 0 : bounce(E_FLOOR, b.vy);
             jn = (1 + e) * b.vy * b.m;
             b.vy = -e * b.vy;
           }
@@ -142,7 +142,10 @@
           b.vx += jt / b.m;
           b.w -= jt / (INERTIA * b.m * b.r);
           b.floor = true;
-          if (b.bomb && b.hitAt === null) b.hitAt = simT;
+          if (b.bomb) {
+            if (b.vy < 0) b.vy = 0;
+            if (b.hitAt === null) b.hitAt = simT;
+          }
         }
       }
     }
