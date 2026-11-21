@@ -3,11 +3,12 @@
   var dock = document.querySelector('.dock');
   if (!dock) return;
   var NEED = 5, WINDOW = 2000, COUNT = 30, MAX_SETS = 3, SPAWN = 1000, CALM_MS = 1500, FLOOR_MAX = 7000, HARD_STOP = 16000;
-  var G = 2000, E_BALL = 0.55, E_WALL = 0.6, E_FLOOR = 0.6, MU = 0.35, INERTIA = 2 / 3, KF = 1 + 1 / INERTIA;
-  var BOUNCE_MIN = 120, STEP = 1 / 240, ITER = 4, SLOP = 0.2, PUSH = 0.8;
+  var G = 3800, E_BALL = 0.7, E_WALL = 0.7, E_FLOOR = 0.65, MU = 0.35, INERTIA = 2 / 3, KF = 1 + 1 / INERTIA;
+  var BOUNCE_MIN = 40, STEP = 1 / 240, ITER = 5, SLOP = 0.2, PUSH = 0.8;
+  var REST_V = 50, REST_W = 40;
   var WAKE_V = 80, SWIPE_R = 16, MAX_V = 2200, MIN_SWIPE = 150;
   var BTN_DELAY = 1000, DWELL = 0.5, BLAST = 3400, LIFT = 1200, MAXB = 3600;
-  var BOMB_R = 26, BOMB_M = 60, BOMB_G = 1.5, BOMB_V = 500, SINK_S = 2, UPBIAS = 0.3;
+  var BOMB_R = 26, BOMB_M = 60, BOMB_GRAV = 4500, BOMB_V = 500, SINK_S = 2, UPBIAS = 0.3;
   var BOMB_E = 0.2, BOMB_BOUNCES = 2, BOMB_MIN_V = 150;
   var taps = [], running = false, show = null;
 
@@ -25,7 +26,7 @@
   }, true);
 
   function bounce(e, v) {
-    var s = (v - BOUNCE_MIN) / 500;
+    var s = (v - BOUNCE_MIN) / 300;
     return s <= 0 ? 0 : Math.min(e, e * s);
   }
   function wake(b) { if (b.sleep) { b.sleep = false; b.rest = 0; } }
@@ -158,18 +159,16 @@
         b = balls[k];
         if (b.gone || b.sleep) continue;
         if (!b.live) { if (el >= b.at) b.live = true; else continue; }
-        b.vy += G * (b.bomb ? BOMB_G : 1) * h;
+        b.vy += (b.bomb ? BOMB_GRAV : G) * h;
         b.vx *= 1 - 0.1 * h;
         b.w *= 1 - 0.1 * h;
         if (b.floor) {
           b.vx *= 1 - 3 * h;
           b.w *= 1 - 3 * h;
         }
-        if (b.touch && !b.bomb) {
-          b.vx *= 1 - 3 * h; b.vy *= 1 - 3 * h; b.w *= 1 - 5 * h;
-        }
+        if (b.touch && !b.bomb) b.w *= 1 - 2 * h;
         if (!b.bomb) {
-          if ((b.floor || b.touch) && b.vx * b.vx + b.vy * b.vy < 225 && Math.abs(b.w * b.r) < 15) b.rest += h;
+          if ((b.floor || b.touch) && b.vx * b.vx + b.vy * b.vy < REST_V * REST_V && Math.abs(b.w * b.r) < REST_W) b.rest += h;
           else b.rest = 0;
           if (b.rest > 0.25) { b.sleep = true; b.vx = 0; b.vy = 0; b.w = 0; }
         }
@@ -253,7 +252,7 @@
 
     function dropBomb() {
       if (bomb) return;
-      var r = BOMB_R, d = H + 10, g = G * BOMB_G;
+      var r = BOMB_R, d = H + 10, g = BOMB_GRAV;
       var tFall = (-BOMB_V + Math.sqrt(BOMB_V * BOMB_V + 2 * g * d)) / g;
       bomb = {
         x: W * 0.35 + Math.random() * W * 0.3, y: -r - 10, vx: (Math.random() - 0.5) * 60, vy: BOMB_V,
