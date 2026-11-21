@@ -161,7 +161,7 @@
       var r = h('div', 'row');
       r.appendChild(btn);
       if (t.status === 'done') {
-        var del = h('button', 'btn small ghost', 'Delete');
+        var del = h('button', 'btn small danger', 'Delete');
         del.type = 'button';
         del.addEventListener('click', function () {
           if (!window.confirm('Delete ticket #' + t.id + ' permanently?')) return;
