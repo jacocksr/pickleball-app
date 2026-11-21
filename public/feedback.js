@@ -160,6 +160,18 @@
       });
       var r = h('div', 'row');
       r.appendChild(btn);
+      if (t.status === 'done') {
+        var del = h('button', 'btn small ghost', 'Delete');
+        del.type = 'button';
+        del.addEventListener('click', function () {
+          if (!window.confirm('Delete ticket #' + t.id + ' permanently?')) return;
+          del.disabled = true; btn.disabled = true;
+          call('/api/admin/tickets/delete', { id: t.id })
+            .then(load)
+            .catch(function (err) { status(tmsg, err.message, false); del.disabled = false; btn.disabled = false; });
+        });
+        r.appendChild(del);
+      }
       row.appendChild(r);
       list.appendChild(row);
     });
