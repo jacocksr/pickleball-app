@@ -233,7 +233,8 @@
       });
     }
 
-    /* One TNT button per trigger so far: the first trigger shows 1, the second shows 2, and so on up to 10. */
+    /* The button count follows the trigger count: trigger 1 shows 1, trigger 2 shows 2, and so on up to 10.
+       A new trigger tops up the buttons already on screen instead of waiting for them to clear. */
     function hideBtns(slide) {
       var list = btns, wrap = box;
       btns = [];
@@ -261,10 +262,16 @@
       dropBomb();
     }
     function showBtns() {
-      var n = Math.max(1, Math.min(show ? show.sets : 1, MAX_SETS)), i, el;
-      box = document.createElement('div');
-      box.style.cssText = 'position:fixed;right:12px;top:24%;z-index:61;display:flex;flex-direction:column;flex-wrap:wrap-reverse;align-items:flex-end;gap:8px;max-height:56vh;pointer-events:none';
-      for (i = 0; i < n; i++) {
+      var n = Math.max(1, Math.min(show ? show.sets : 1, MAX_SETS));
+      var add = n - btns.length, i, el;
+      btnArmed = false;
+      if (add <= 0) return;
+      if (!box) {
+        box = document.createElement('div');
+        box.style.cssText = 'position:fixed;right:12px;top:24%;z-index:61;display:flex;flex-direction:column;flex-wrap:wrap-reverse;align-items:flex-end;gap:8px;max-height:56vh;pointer-events:none';
+        document.body.appendChild(box);
+      }
+      for (i = 0; i < add; i++) {
         el = document.createElement('button');
         el.type = 'button';
         el.textContent = 'TNT \uD83D\uDCA5';
@@ -275,8 +282,6 @@
         btns.push(el);
         if (el.animate) el.animate([{ transform: 'scale(0) rotate(-12deg)', opacity: 0 }, { transform: 'scale(1.15) rotate(3deg)', opacity: 1, offset: 0.7 }, { transform: 'scale(1) rotate(0deg)', opacity: 1 }], { duration: 420, delay: i * 60, easing: 'cubic-bezier(.3,1.4,.5,1)', fill: 'both' });
       }
-      document.body.appendChild(box);
-      btnArmed = false;
     }
 
     function dropBomb() {
@@ -418,7 +423,7 @@
         if (o.gone) { var i = bombs.indexOf(o); if (i >= 0) bombs.splice(i, 1); return; }
         if ((o.hitAt !== null && simT - o.hitAt >= DWELL) || simT - o.born >= o.fuse) explode(o, now);
       });
-      if (floorOn && !bombs.length && btnArmed && !btns.length && el - setAt > BTN_DELAY) showBtns();
+      if (floorOn && btnArmed && (btns.length || el - setAt > BTN_DELAY)) showBtns();
       if (btns.length && !floorOn) hideBtns(true);
       if (floorOn && !bombs.length) {
         if (el - setAt > FLOOR_MAX) openFloor();
