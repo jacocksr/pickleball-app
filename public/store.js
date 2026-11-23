@@ -3,6 +3,7 @@
   var KEY = 'pickleball-data-v3';
   var OLD = 'pickleball-data-v2';
   var MIN = 3;
+  var MAX_COURTS = 12;
   var failing = false;
 
   function rid(n) {
@@ -13,7 +14,7 @@
   }
 
   function blank() {
-    return { token: rid(24), here: {}, sits: {}, round: null, players: [], games: [], admin: null, adminOn: false, editId: null, windowMin: 120 };
+    return { token: rid(24), here: {}, sits: {}, streak: {}, rank: {}, snap: null, courts: 0, round: null, players: [], games: [], admin: null, adminOn: false, editId: null, windowMin: 120 };
   }
 
   function load() {
@@ -24,7 +25,13 @@
         if (/^[0-9a-f]{32,64}$/.test(d.token || '')) s.token = d.token;
         s.here = d.here || {};
         s.sits = d.sits || {};
+        s.streak = d.streak || {};
+        s.rank = d.rank || {};
+        s.snap = d.snap || null;
+        s.courts = d.courts >= 0 && d.courts <= MAX_COURTS ? Math.floor(d.courts) : 0;
         s.round = d.round || null;
+        if (s.round && !s.round.waiting) s.round.waiting = s.round.sitting || [];
+        if (s.round && !(s.round.courts >= 0)) s.round.courts = 0;
         s.players = Array.isArray(d.players) ? d.players : [];
         s.games = Array.isArray(d.games) ? d.games : [];
         s.admin = d.admin && d.admin.expires > Date.now() ? d.admin : null;
@@ -38,7 +45,7 @@
 
   function save() {
     try {
-      localStorage.setItem(KEY, JSON.stringify({ token: S.token, here: S.here, sits: S.sits, round: S.round, players: S.players, games: S.games, admin: S.admin }));
+      localStorage.setItem(KEY, JSON.stringify({ token: S.token, here: S.here, sits: S.sits, streak: S.streak, rank: S.rank, snap: S.snap, courts: S.courts, round: S.round, players: S.players, games: S.games, admin: S.admin }));
     } catch (e) {}
   }
 
@@ -46,6 +53,7 @@
   function byName(a, b) { return a.name.localeCompare(b.name); }
   function ids(list) { return list.map(function (p) { return p.id; }); }
   function fail(e) { return { ok: false, msg: e && e.message ? e.message : 'Something went wrong.' }; }
+  function copy(o) { var r = {}; Object.keys(o || {}).forEach(function (k) { r[k] = o[k]; }); return r; }
 
   /* ---------- Server calls ---------- */
   function api(path, body) {
@@ -113,8 +121,9 @@
     applyHere(); save();
     return { ok: true, msg: '' };
   }
-  function clearToday() { S.here = {}; applyHere(); save(); }
-  function resetLocal() { S.here = {}; S.round = null; S.sits = {}; applyHere(); save(); }
+  function clearWaits() { S.sits = {}; S.streak = {}; S.rank = {}; S.snap = null; }
+  function clearToday() { S.here = {}; clearWaits(); applyHere(); save(); }
+  function resetLocal() { S.here = {}; S.round = null; clearWaits(); applyHere(); save(); }
 
   function addPlayer(name) {
     name = String(name || '').trim().split(' ').filter(Boolean).join(' ');
@@ -140,7 +149,7 @@
     return api('/api/admin/player/delete', { id: id }).then(function () { return refresh(); }).then(function () { return { ok: true }; }).catch(fail);
   }
 
-  /* ---------- Shuffle ---------- */
+  /* ---------- Courts and shuffle ---------- */
   function shuffle(arr) {
     var a = arr.slice();
     for (var i = a.length - 1; i > 0; i--) {
@@ -150,28 +159,96 @@
     return a;
   }
 
-  function buildRound() {
-    var pool = shuffle(here().map(function (p) { return { id: p.id, name: p.name }; }));
-    if (pool.length < MIN) return null;
-    var sitting = [];
-    if (pool.length % 2 === 1) {
-      var min = Infinity;
-      pool.forEach(function (p) { min = Math.min(min, S.sits[p.id] || 0); });
-      var idx = 0;
-      for (var i = 0; i < pool.length; i++) { if ((S.sits[pool[i].id] || 0) === min) { idx = i; break; } }
-      var sitter = pool.splice(idx, 1)[0];
-      S.sits[sitter.id] = (S.sits[sitter.id] || 0) + 1;
-      sitting.push(sitter);
-    }
-    var matches = [];
+  function courts() { return S.courts; }
+  function setCourts(n) {
+    n = Math.round(Number(n));
+    if (!(n >= 0)) n = 0;
+    if (n > MAX_COURTS) n = MAX_COURTS;
+    S.courts = n;
+    save();
+    return n;
+  }
+
+  /* How many play, given the head count and the courts. 0 courts means no limit. */
+  function plan(n, c) {
+    var cap = c > 0 ? c * 4 : Infinity;
+    var p = n > cap ? cap : n - (n % 2);
+    return { play: p, doubles: Math.floor(p / 4), singles: p % 4 >= 2 ? 1 : 0, waiting: n - p };
+  }
+
+  /* Who plays first: longest wait in a row, then most waits today, then place in line, then luck. */
+  function order(list) {
+    var keyed = shuffle(list).map(function (p, i) { return { p: p, i: i }; });
+    keyed.sort(function (a, b) {
+      var sa = S.streak[a.p.id] || 0, sb = S.streak[b.p.id] || 0;
+      if (sa !== sb) return sb - sa;
+      var ta = S.sits[a.p.id] || 0, tb = S.sits[b.p.id] || 0;
+      if (ta !== tb) return tb - ta;
+      var ra = S.rank[a.p.id] == null ? Infinity : S.rank[a.p.id];
+      var rb = S.rank[b.p.id] == null ? Infinity : S.rank[b.p.id];
+      if (ra !== rb) return ra < rb ? -1 : 1;
+      return a.i - b.i;
+    });
+    return keyed.map(function (k) { return k.p; });
+  }
+
+  function deal(playing) {
+    var pool = shuffle(playing), matches = [], f;
     while (pool.length >= 4) {
-      var f = pool.splice(0, 4);
+      f = pool.splice(0, 4);
       matches.push({ id: rid(12), type: 'doubles', a: [f[0], f[1]], b: [f[2], f[3]], winner: null });
     }
     if (pool.length === 2) matches.push({ id: rid(12), type: 'singles', a: [pool[0]], b: [pool[1]], winner: null });
-    S.round = { id: rid(12), matches: matches, sitting: sitting };
+    return matches;
+  }
+
+  function nextRound() {
+    var all = here().map(function (p) { return { id: p.id, name: p.name }; });
+    if (all.length < MIN) return null;
+    S.snap = { sits: copy(S.sits), streak: copy(S.streak), rank: copy(S.rank) };
+    var pl = plan(all.length, S.courts);
+    var sorted = order(all);
+    var playing = sorted.slice(0, pl.play);
+    var waiting = sorted.slice(pl.play);
+    playing.forEach(function (p) { S.streak[p.id] = 0; delete S.rank[p.id]; });
+    waiting.forEach(function (p) {
+      S.sits[p.id] = (S.sits[p.id] || 0) + 1;
+      S.streak[p.id] = (S.streak[p.id] || 0) + 1;
+    });
+    waiting = order(waiting);
+    waiting.forEach(function (p, i) { S.rank[p.id] = i; });
+    S.round = { id: rid(12), courts: S.courts, matches: deal(playing), waiting: waiting };
     save();
     return S.round;
+  }
+
+  function hasResults() {
+    return !!(S.round && S.round.matches.some(function (m) { return m.winner; }));
+  }
+
+  function sameLineup() {
+    var r = S.round;
+    if (!r || r.courts !== S.courts) return false;
+    var inRound = {}, n = 0;
+    r.matches.forEach(function (m) { m.a.concat(m.b).forEach(function (p) { inRound[p.id] = 1; n++; }); });
+    r.waiting.forEach(function (p) { inRound[p.id] = 1; n++; });
+    var h = here();
+    return h.length === n && h.every(function (p) { return inRound[p.id]; });
+  }
+
+  /* Deal new teams without moving the line. If the lineup or courts changed, plan the round again. */
+  function redeal() {
+    var r = S.round;
+    if (!r || hasResults()) return nextRound();
+    if (sameLineup()) {
+      var playing = [];
+      r.matches.forEach(function (m) { m.a.concat(m.b).forEach(function (p) { playing.push(p); }); });
+      r.matches = deal(playing);
+      save();
+      return r;
+    }
+    if (S.snap) { S.sits = copy(S.snap.sits); S.streak = copy(S.snap.streak); S.rank = copy(S.snap.rank); }
+    return nextRound();
   }
 
   /* ---------- Games (shared) ---------- */
@@ -273,9 +350,10 @@
   }
 
   window.PB = { store: {
-    MIN: MIN, state: function () { return S; }, sig: sig, refresh: refresh,
+    MIN: MIN, MAX_COURTS: MAX_COURTS, state: function () { return S; }, sig: sig, refresh: refresh,
     here: here, away: away, addPlayer: addPlayer, setHere: setHere, clearToday: clearToday, removePlayer: removePlayer, resetLocal: resetLocal,
-    buildRound: buildRound, setWinner: setWinner, deleteGame: deleteGame, flipGame: flipGame, canEdit: canEdit, stats: stats,
+    courts: courts, setCourts: setCourts, plan: plan, nextRound: nextRound, redeal: redeal, hasResults: hasResults, buildRound: nextRound,
+    setWinner: setWinner, deleteGame: deleteGame, flipGame: flipGame, canEdit: canEdit, stats: stats,
     isAdmin: function () { return S.adminOn; }, editMinutes: function () { return S.windowMin; },
     adminLogin: adminLogin, adminLogout: adminLogout, importBackup: importBackup, importLocalOld: importLocalOld, exportJSON: exportJSON
   } };
