@@ -139,6 +139,7 @@
     var here = P.here();
     var n = here.length;
     $('count').textContent = count(n, 'player', 'players');
+    renderCourts();
 
     var list = $('chips');
     list.innerHTML = '';
@@ -184,15 +185,74 @@
     if (n < P.MIN) {
       pv.textContent = 'Add ' + count(P.MIN - n, 'more player', 'more players') + ' to start.';
     } else {
-      var d = Math.floor(n / 4), left = n % 4, parts = [];
-      if (d) parts.push(count(d, 'doubles match', 'doubles matches'));
-      if (left >= 2) parts.push('1 singles match');
-      if (left % 2) parts.push('1 sitting out');
+      var pl = P.plan(n, P.courts()), parts = [];
+      if (pl.doubles) parts.push(count(pl.doubles, 'doubles match', 'doubles matches'));
+      if (pl.singles) parts.push('1 singles match');
+      if (pl.waiting) parts.push(pl.waiting + ' waiting');
       pv.textContent = parts.join(' \u00b7 ');
     }
   }
 
+  /* ---------- Courts and rounds ---------- */
+  function buildCourts() {
+    var box = h('div', 'courts row');
+    box.appendChild(h('span', 'muted', 'Courts available'));
+    var down = h('button', 'btn small', '\u2212');
+    down.type = 'button';
+    down.id = 'courtsDown';
+    down.setAttribute('aria-label', 'Fewer courts');
+    var val = h('span', 'pill');
+    val.id = 'courtsVal';
+    val.setAttribute('aria-live', 'polite');
+    var up = h('button', 'btn small', '+');
+    up.type = 'button';
+    up.id = 'courtsUp';
+    up.setAttribute('aria-label', 'More courts');
+    down.addEventListener('click', function () { P.setCourts(P.courts() - 1); renderPlay(); });
+    up.addEventListener('click', function () { P.setCourts(P.courts() + 1); renderPlay(); });
+    box.appendChild(down);
+    box.appendChild(val);
+    box.appendChild(up);
+    var pv = $('preview');
+    pv.parentNode.insertBefore(box, pv);
+  }
+
+  function renderCourts() {
+    var c = P.courts();
+    $('courtsVal').textContent = c ? count(c, 'court', 'courts') : 'No limit';
+    $('courtsDown').disabled = c <= 0;
+    $('courtsUp').disabled = c >= P.MAX_COURTS;
+  }
+
+  function buildSkip() {
+    var b = h('button', 'btn small ghost', 'Next round');
+    b.type = 'button';
+    b.id = 'skipRound';
+    b.style.display = 'none';
+    b.setAttribute('aria-label', 'Skip ahead to the next round and bring in the players who are waiting');
+    b.addEventListener('click', function () { runRound('next'); });
+    $('shuffle').parentNode.appendChild(b);
+  }
+
+  function updateShuffleUi() {
+    var r = P.state().round;
+    var lbl = 'Shuffle teams';
+    if (r) lbl = P.hasResults() ? 'Next round' : 'Re-deal teams';
+    $('shuffleLbl').textContent = lbl;
+    $('skipRound').style.display = r && !P.hasResults() && r.waiting.length > 0 ? '' : 'none';
+  }
+
+  function runRound(kind) {
+    var round = kind === 'redeal' ? P.redeal() : P.nextRound();
+    if (!round) return;
+    launch($('shuffle'), 'pill');
+    renderResults(true);
+    var first = $('results').firstChild;
+    if (first && first.scrollIntoView) first.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
   function renderResults(animate) {
+    updateShuffleUi();
     var box = $('results');
     box.innerHTML = '';
     var r = P.state().round;
@@ -201,7 +261,9 @@
     r.matches.forEach(function (m, i) {
       var card = h('article', 'match' + (animate ? ' enter' : ''));
       if (animate) card.style.animationDelay = Math.min(i, 12) * 90 + 'ms';
-      card.appendChild(h('h3', null, m.type === 'doubles' ? 'Doubles ' + (++dn) : 'Singles'));
+      var kind = m.type === 'doubles' ? 'Doubles' : 'Singles';
+      var title = r.courts > 0 ? 'Court ' + (i + 1) + ' \u00b7 ' + kind : (m.type === 'doubles' ? 'Doubles ' + (++dn) : 'Singles');
+      card.appendChild(h('h3', null, title));
       var sides = h('div', 'sides');
       ['a', 'b'].forEach(function (side, k) {
         var cls = 'side ' + side + (m.winner === side ? ' win' : '') + (m.winner && m.winner !== side ? ' lose' : '');
@@ -227,11 +289,13 @@
       card.appendChild(sides);
       box.appendChild(card);
     });
-    if (r.sitting.length) {
+    if (r.waiting.length) {
       var c = h('article', 'match sitcard' + (animate ? ' enter' : ''));
       if (animate) c.style.animationDelay = Math.min(r.matches.length, 12) * 90 + 'ms';
-      c.appendChild(h('h3', null, 'Sitting out'));
-      c.appendChild(h('p', null, r.sitting[0].name + ' rests this round.'));
+      var one = r.waiting.length === 1;
+      c.appendChild(h('h3', null, r.courts > 0 ? 'Waiting' : 'Sitting out'));
+      if (one) c.appendChild(h('p', null, r.waiting[0].name + (r.courts > 0 ? ' waits this round and plays next.' : ' rests this round.')));
+      else c.appendChild(h('p', null, 'In line, first up first: ' + r.waiting.map(function (p) { return p.name; }).join(', ') + '.'));
       box.appendChild(c);
     }
     if (r.matches.length) box.insertBefore(h('p', 'muted hint', 'Tap the winning side to log a result. Tap again to undo.'), box.firstChild);
@@ -457,13 +521,8 @@
   });
 
   $('shuffle').addEventListener('click', function () {
-    var round = P.buildRound();
-    if (!round) return;
-    launch($('shuffle'), 'pill');
-    $('shuffleLbl').textContent = 'Shuffle again';
-    renderResults(true);
-    var first = $('results').firstChild;
-    if (first && first.scrollIntoView) first.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    var r = P.state().round;
+    runRound(r && !P.hasResults() ? 'redeal' : 'next');
   });
 
   $('statSeg').addEventListener('click', function (e) {
@@ -528,7 +587,6 @@
     if (!window.confirm('Clear who is here today and the current shuffle on this device?')) return;
     P.resetLocal();
     seen = {};
-    $('shuffleLbl').textContent = 'Shuffle teams';
     renderAll(); renderResults(false);
     toast('Lineup reset');
   });
@@ -548,9 +606,10 @@
   }
   function sync() { return P.refresh().then(afterRefresh); }
 
+  buildCourts();
+  buildSkip();
   renderAll();
   renderResults(false);
-  if (P.state().round) $('shuffleLbl').textContent = 'Shuffle again';
   var start = location.hash.slice(1);
   show(TABS.indexOf(start) >= 0 ? start : 'play', false);
   sync();
