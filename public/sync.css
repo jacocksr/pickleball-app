@@ -21,15 +21,21 @@ textarea:focus{outline:3px solid var(--brand);outline-offset:0;border-color:var(
 [data-theme=dark] #adminLogout{background:var(--head)}
 #adminLogout:hover:not(:disabled){border-color:var(--brand);color:var(--brand)}
 
-/* Courts: round actions and team editing */
-#skipRound,#editTeams{display:inline-block;margin:12px 5px 0;padding:.6rem 1.35rem;border-radius:999px;border:2px solid transparent;font-size:.92rem;font-weight:800;letter-spacing:.01em;cursor:pointer;box-shadow:0 3px 10px rgba(18,40,74,.18)}
-#skipRound{background:#6a3fd0;border-color:#6a3fd0;color:#fff}
-#skipRound:hover:not(:disabled){filter:brightness(1.1)}
-#editTeams{background:#f5b22b;border-color:#f5b22b;color:#2b1d00}
-#editTeams:hover:not(:disabled){filter:brightness(1.06)}
+/* Courts: stepper, round actions and team editing. Colors come from the theme variables. */
+.courts .btn.small{width:34px;height:34px;padding:0;border-radius:50%;border:1.5px solid var(--brand);background:var(--card);color:var(--brand);font-size:1.1rem;font-weight:800;line-height:1}
+[data-theme=dark] .courts .btn.small{background:var(--head)}
+.courts .btn.small:hover:not(:disabled){background:var(--brand-soft)}
+#skipRound,#editTeams{display:inline-block;margin:12px 5px 0;padding:.55rem 1.3rem;border-radius:999px;border:1.5px solid transparent;font:inherit;font-size:.9rem;font-weight:700;cursor:pointer;box-shadow:var(--shadow);transition:filter .2s,transform .12s,background .2s}
+#skipRound{background:var(--navy);border-color:var(--navy);color:var(--page)}
+#skipRound:hover:not(:disabled){filter:brightness(1.15)}
+#editTeams{background:var(--brand-soft);border-color:var(--brand);color:var(--brand)}
+#editTeams:hover:not(:disabled){background:var(--card)}
+#skipRound:active,#editTeams:active{transform:scale(.97)}
 #skipRound:focus-visible,#editTeams:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
 div.side{cursor:default}
-.side .btn.small{display:block;width:100%;max-width:240px;padding:.5rem .9rem;border:2px solid transparent;border-radius:999px;background:#fff;color:#12284a;font-size:.98rem;font-weight:800;box-shadow:0 2px 6px rgba(0,0,0,.18)}
-.side .btn.small.primary{background:var(--lime);color:#2c3a00;border-color:#fff;box-shadow:0 0 0 3px #fff,0 4px 10px rgba(0,0,0,.25)}
-.sitcard .row .btn.small{background:var(--card);color:var(--text);border:2px solid var(--line);font-weight:800}
-.sitcard .row .btn.small.primary{background:var(--lime);color:#2c3a00;border-color:var(--brand)}
+.side .btn.small{display:block;width:100%;max-width:240px;padding:.5rem .9rem;border:1.5px solid rgba(255,255,255,.6);border-radius:999px;background:rgba(255,255,255,.16);color:#fff;font-size:.98rem;font-weight:700;box-shadow:none}
+.side .btn.small:hover{background:rgba(255,255,255,.28)}
+.side .btn.small.primary{background:var(--lime);border-color:var(--lime);color:#2c3a00;font-weight:800;box-shadow:0 0 0 3px rgba(255,255,255,.85)}
+.sitcard .row .btn.small{background:var(--card);border:1.5px solid var(--brand);border-radius:999px;color:var(--text);font-weight:700}
+[data-theme=dark] .sitcard .row .btn.small{background:var(--head)}
+.sitcard .row .btn.small.primary{background:linear-gradient(135deg,var(--brand),var(--brand2));border-color:transparent;color:#fff}
