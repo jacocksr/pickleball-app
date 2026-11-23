@@ -226,29 +226,61 @@
     return !!(S.round && S.round.matches.some(function (m) { return m.winner; }));
   }
 
-  function sameLineup() {
-    var r = S.round;
-    if (!r || r.courts !== S.courts) return false;
-    var inRound = {}, n = 0;
-    r.matches.forEach(function (m) { m.a.concat(m.b).forEach(function (p) { inRound[p.id] = 1; n++; }); });
-    r.waiting.forEach(function (p) { inRound[p.id] = 1; n++; });
-    var h = here();
-    return h.length === n && h.every(function (p) { return inRound[p.id]; });
-  }
-
-  /* Deal new teams without moving the line. If the lineup or courts changed, plan the round again. */
+  /* Plan this round again from the counts as they stood before it. Anyone who has to play still plays,
+     and the rest of the waiting spots are drawn fresh, so nobody is passed over unfairly. */
   function redeal() {
     var r = S.round;
     if (!r || hasResults()) return nextRound();
-    if (sameLineup()) {
-      var playing = [];
-      r.matches.forEach(function (m) { m.a.concat(m.b).forEach(function (p) { playing.push(p); }); });
-      r.matches = deal(playing);
-      save();
-      return r;
+    if (S.snap) {
+      S.sits = copy(S.snap.sits); S.streak = copy(S.snap.streak); S.rank = copy(S.snap.rank);
+      return nextRound();
     }
-    if (S.snap) { S.sits = copy(S.snap.sits); S.streak = copy(S.snap.streak); S.rank = copy(S.snap.rank); }
-    return nextRound();
+    var playing = [];
+    r.matches.forEach(function (m) { m.a.concat(m.b).forEach(function (p) { playing.push(p); }); });
+    r.matches = deal(playing);
+    r.edited = false;
+    save();
+    return r;
+  }
+
+  /* ---------- Manual changes ---------- */
+  function locate(id) {
+    var r = S.round, i, j, s, k, sides = ['a', 'b'];
+    if (!r) return null;
+    for (i = 0; i < r.matches.length; i++) {
+      for (s = 0; s < 2; s++) {
+        var list = r.matches[i][sides[s]];
+        for (j = 0; j < list.length; j++) {
+          if (list[j].id === id) return { list: list, idx: j, m: r.matches[i], wait: false };
+        }
+      }
+    }
+    for (k = 0; k < r.waiting.length; k++) {
+      if (r.waiting[k].id === id) return { list: r.waiting, idx: k, m: null, wait: true };
+    }
+    return null;
+  }
+
+  /* Swap two players in the current round. Moving someone on or off court keeps the wait counts fair. */
+  function swap(aId, bId) {
+    var a = locate(aId), b = locate(bId);
+    if (!a || !b) return { ok: false, msg: 'That player is not in this round.' };
+    if ((a.m && a.m.winner) || (b.m && b.m.winner)) return { ok: false, msg: 'That match already has a result.' };
+    var pa = a.list[a.idx], pb = b.list[b.idx];
+    a.list[a.idx] = pb;
+    b.list[b.idx] = pa;
+    if (a.wait !== b.wait) {
+      var on = a.wait ? pa : pb, off = a.wait ? pb : pa, sn = S.snap;
+      S.sits[on.id] = sn ? (sn.sits[on.id] || 0) : Math.max(0, (S.sits[on.id] || 1) - 1);
+      S.streak[on.id] = 0;
+      delete S.rank[on.id];
+      S.sits[off.id] = (sn ? (sn.sits[off.id] || 0) : (S.sits[off.id] || 0)) + 1;
+      S.streak[off.id] = (sn ? (sn.streak[off.id] || 0) : (S.streak[off.id] || 0)) + 1;
+    }
+    S.round.waiting.forEach(function (p, i) { S.rank[p.id] = i; });
+    S.round.edited = true;
+    save();
+    return { ok: true, msg: '' };
   }
 
   /* ---------- Games (shared) ---------- */
@@ -352,7 +384,7 @@
   window.PB = { store: {
     MIN: MIN, MAX_COURTS: MAX_COURTS, state: function () { return S; }, sig: sig, refresh: refresh,
     here: here, away: away, addPlayer: addPlayer, setHere: setHere, clearToday: clearToday, removePlayer: removePlayer, resetLocal: resetLocal,
-    courts: courts, setCourts: setCourts, plan: plan, nextRound: nextRound, redeal: redeal, hasResults: hasResults, buildRound: nextRound,
+    courts: courts, setCourts: setCourts, plan: plan, nextRound: nextRound, redeal: redeal, swap: swap, hasResults: hasResults, buildRound: nextRound,
     setWinner: setWinner, deleteGame: deleteGame, flipGame: flipGame, canEdit: canEdit, stats: stats,
     isAdmin: function () { return S.adminOn; }, editMinutes: function () { return S.windowMin; },
     adminLogin: adminLogin, adminLogout: adminLogout, importBackup: importBackup, importLocalOld: importLocalOld, exportJSON: exportJSON
