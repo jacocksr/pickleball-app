@@ -285,13 +285,14 @@
       var b = {
         x: W * 0.2 + Math.random() * W * 0.6, y: -r - 10, vx: (Math.random() - 0.5) * 60, vy: BOMB_V,
         r: r, m: BOMB_M * r * r, a: 0, w: 0, at: 0, live: true, gone: false, floor: false, touch: false,
-        sleep: false, rest: 0, freed: false, bomb: true, hitAt: null, bounces: 0, born: simT, fuse: tFall + SINK_S, fuseAt: null
+        sleep: false, rest: 0, freed: false, bomb: true, hitAt: null, bounces: 0, born: simT, fuse: tFall + SINK_S
       };
       bombs.push(b);
       balls.push(b);
     }
 
-    /* A blast sets off any other bombs still in the air a moment later, so they chain. */
+    /* Every bomb lands, bounces and burns down on its own. The floor only opens when the last bomb goes off,
+       so the others still have a floor to land on. */
     function explode(b, now) {
       var bx = b.x, by = b.y, reach = Math.max(W, H) * 0.9;
       var at = bombs.indexOf(b);
@@ -299,9 +300,8 @@
       b.gone = true;
       calm = 0;
       ceilOn = true;
-      floorOn = false;
+      if (!bombs.length) floorOn = false;
       setAt = (now - t0) - SPAWN;
-      bombs.forEach(function (o) { if (o.fuseAt === null) o.fuseAt = simT + 0.05 + Math.random() * 0.2; });
       balls.forEach(function (o) {
         if (o.gone || !o.live || o.bomb) return;
         wake(o);
@@ -416,7 +416,7 @@
       while (acc >= STEP) { step(STEP, el); acc -= STEP; }
       bombs.slice().forEach(function (o) {
         if (o.gone) { var i = bombs.indexOf(o); if (i >= 0) bombs.splice(i, 1); return; }
-        if ((o.hitAt !== null && simT - o.hitAt >= DWELL) || simT - o.born >= o.fuse || (o.fuseAt !== null && simT >= o.fuseAt)) explode(o, now);
+        if ((o.hitAt !== null && simT - o.hitAt >= DWELL) || simT - o.born >= o.fuse) explode(o, now);
       });
       if (floorOn && !bombs.length && btnArmed && !btns.length && el - setAt > BTN_DELAY) showBtns();
       if (btns.length && !floorOn) hideBtns(true);
