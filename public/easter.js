@@ -49,9 +49,6 @@
     cv.height = Math.round(H * dpr);
     document.body.appendChild(cv);
     var ctx = cv.getContext('2d');
-    var cs = getComputedStyle(document.documentElement);
-    var brand = cs.getPropertyValue('--brand').trim() || '#14935a';
-    var fill = cs.getPropertyValue('--card').trim() || '#ffffff';
     var dots = [[12, 7.2], [7.6, 10], [16.4, 10], [12, 12], [8.4, 15], [15.6, 15], [12, 16.8]];
     var prevTouch = document.documentElement.style.touchAction;
     document.documentElement.style.touchAction = 'none';
@@ -61,12 +58,13 @@
 
     function spawnSet(base) {
       for (var i = 0; i < COUNT; i++) {
-        var r = 13 + Math.random() * 8;
+        var r = 13 + Math.random() * 8, hue = Math.floor(Math.random() * 360);
         balls.push({
           x: r + Math.random() * Math.max(1, W - 2 * r), y: -r - Math.random() * 60,
           vx: (Math.random() - 0.5) * 240, vy: Math.random() * 200,
           r: r, m: r * r, a: Math.random() * 6.28, w: (Math.random() - 0.5) * 6,
           at: base + (i * SPAWN) / COUNT + Math.random() * 40,
+          body: 'hsl(' + hue + ',85%,58%)', ink: 'hsl(' + hue + ',70%,26%)',
           live: false, gone: false, floor: false, touch: false, sleep: false, rest: 0, freed: false, bomb: false
         });
       }
@@ -334,12 +332,12 @@
       ctx.translate(-12, -12);
       ctx.beginPath();
       ctx.arc(12, 12, 9, 0, 6.2832);
-      ctx.fillStyle = fill;
+      ctx.fillStyle = b.body;
       ctx.fill();
       ctx.lineWidth = 1.7;
-      ctx.strokeStyle = brand;
+      ctx.strokeStyle = b.ink;
       ctx.stroke();
-      ctx.fillStyle = brand;
+      ctx.fillStyle = b.ink;
       dots.forEach(function (p) { ctx.beginPath(); ctx.arc(p[0], p[1], 1.3, 0, 6.2832); ctx.fill(); });
       ctx.restore();
     }
