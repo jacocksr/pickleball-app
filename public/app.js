@@ -12,6 +12,8 @@
   var toastTimer;
   var busy = false;
   var lastSig = '';
+  var editing = false;
+  var picked = null;
   var calm = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
 
   function $(id) { return document.getElementById(id); }
@@ -139,6 +141,7 @@
     var here = P.here();
     var n = here.length;
     $('count').textContent = count(n, 'player', 'players');
+    renderCourts();
 
     var list = $('chips');
     list.innerHTML = '';
@@ -184,15 +187,150 @@
     if (n < P.MIN) {
       pv.textContent = 'Add ' + count(P.MIN - n, 'more player', 'more players') + ' to start.';
     } else {
-      var d = Math.floor(n / 4), left = n % 4, parts = [];
-      if (d) parts.push(count(d, 'doubles match', 'doubles matches'));
-      if (left >= 2) parts.push('1 singles match');
-      if (left % 2) parts.push('1 sitting out');
+      var pl = P.plan(n, P.courts()), parts = [];
+      if (pl.doubles) parts.push(count(pl.doubles, 'doubles match', 'doubles matches'));
+      if (pl.singles) parts.push('1 singles match');
+      if (pl.waiting) parts.push(pl.waiting + ' waiting');
       pv.textContent = parts.join(' \u00b7 ');
     }
   }
 
+  /* ---------- Courts and rounds ---------- */
+  function buildCourts() {
+    var box = h('div', 'courts row');
+    box.appendChild(h('span', 'muted', 'Courts available'));
+    var down = h('button', 'btn small', '\u2212');
+    down.type = 'button';
+    down.id = 'courtsDown';
+    down.setAttribute('aria-label', 'Fewer courts');
+    var val = h('span', 'pill');
+    val.id = 'courtsVal';
+    val.setAttribute('aria-live', 'polite');
+    var up = h('button', 'btn small', '+');
+    up.type = 'button';
+    up.id = 'courtsUp';
+    up.setAttribute('aria-label', 'More courts');
+    down.addEventListener('click', function () { P.setCourts(P.courts() - 1); renderPlay(); });
+    up.addEventListener('click', function () { P.setCourts(P.courts() + 1); renderPlay(); });
+    box.appendChild(down);
+    box.appendChild(val);
+    box.appendChild(up);
+    var pv = $('preview');
+    pv.parentNode.insertBefore(box, pv);
+  }
+
+  function renderCourts() {
+    var c = P.courts();
+    $('courtsVal').textContent = c ? count(c, 'court', 'courts') : 'No limit';
+    $('courtsDown').disabled = c <= 0;
+    $('courtsUp').disabled = c >= P.MAX_COURTS;
+  }
+
+  function buildSkip() {
+    var b = h('button', 'btn small ghost', 'Next round');
+    b.type = 'button';
+    b.id = 'skipRound';
+    b.style.display = 'none';
+    b.setAttribute('aria-label', 'Skip ahead to the next round and bring in the players who are waiting');
+    b.addEventListener('click', function () { runRound('next'); });
+    $('shuffle').parentNode.appendChild(b);
+    var e = h('button', 'btn small ghost', 'Edit teams');
+    e.type = 'button';
+    e.id = 'editTeams';
+    e.style.display = 'none';
+    e.addEventListener('click', function () {
+      editing = !editing;
+      picked = null;
+      renderResults(false);
+    });
+    $('shuffle').parentNode.appendChild(e);
+  }
+
+  function updateShuffleUi() {
+    var r = P.state().round;
+    var can = !!r && !P.hasResults();
+    var lbl = 'Shuffle teams';
+    if (r) lbl = P.hasResults() ? 'Next round' : 'Re-deal teams';
+    $('shuffleLbl').textContent = lbl;
+    $('skipRound').style.display = can && r.waiting.length > 0 ? '' : 'none';
+    var eb = $('editTeams');
+    eb.style.display = can ? '' : 'none';
+    eb.textContent = editing ? 'Done editing' : 'Edit teams';
+  }
+
+  function runRound(kind) {
+    var r = P.state().round;
+    if (kind === 'redeal' && r && r.edited && !window.confirm('Re-deal will replace the changes you made by hand. Continue?')) return;
+    var round = kind === 'redeal' ? P.redeal() : P.nextRound();
+    if (!round) return;
+    editing = false;
+    picked = null;
+    launch($('shuffle'), 'pill');
+    renderResults(true);
+    var first = $('results').firstChild;
+    if (first && first.scrollIntoView) first.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function matchTitle(r, m, i, dn) {
+    var kind = m.type === 'doubles' ? 'Doubles' : 'Singles';
+    if (r.courts > 0) return 'Court ' + (i + 1) + ' \u00b7 ' + kind;
+    return m.type === 'doubles' ? 'Doubles ' + dn : 'Singles';
+  }
+
+  function pickBtn(p) {
+    var on = picked === p.id;
+    var b = h('button', 'btn small ' + (on ? 'primary' : 'ghost'), p.name);
+    b.type = 'button';
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.addEventListener('click', function () {
+      if (!picked) { picked = p.id; }
+      else if (picked === p.id) { picked = null; }
+      else {
+        var res = P.swap(picked, p.id);
+        picked = null;
+        if (!res.ok) toast(res.msg, true);
+        else toast('Players swapped');
+      }
+      renderResults(false);
+    });
+    return b;
+  }
+
+  function renderEdit() {
+    var box = $('results');
+    box.innerHTML = '';
+    var r = P.state().round;
+    if (!r) return;
+    box.appendChild(h('p', 'muted hint', picked ? 'Now tap the player to swap with.' : 'Tap one player, then tap another to swap them. Waiting players can swap onto a court. Tap Done editing when finished.'));
+    var dn = 0;
+    r.matches.forEach(function (m, i) {
+      if (m.type === 'doubles') dn++;
+      var card = h('article', 'match');
+      card.appendChild(h('h3', null, matchTitle(r, m, i, dn)));
+      var sides = h('div', 'sides');
+      ['a', 'b'].forEach(function (side, k) {
+        var col = h('div', 'side ' + side);
+        m[side].forEach(function (p) { col.appendChild(pickBtn(p)); });
+        sides.appendChild(col);
+        if (k === 0) sides.appendChild(h('div', 'vs', 'vs'));
+      });
+      card.appendChild(sides);
+      box.appendChild(card);
+    });
+    if (r.waiting.length) {
+      var c = h('article', 'match sitcard');
+      c.appendChild(h('h3', null, 'Waiting'));
+      var row = h('div', 'row');
+      r.waiting.forEach(function (p) { row.appendChild(pickBtn(p)); });
+      c.appendChild(row);
+      box.appendChild(c);
+    }
+  }
+
   function renderResults(animate) {
+    if (editing && (!P.state().round || P.hasResults())) { editing = false; picked = null; }
+    updateShuffleUi();
+    if (editing) { renderEdit(); return; }
     var box = $('results');
     box.innerHTML = '';
     var r = P.state().round;
@@ -201,7 +339,8 @@
     r.matches.forEach(function (m, i) {
       var card = h('article', 'match' + (animate ? ' enter' : ''));
       if (animate) card.style.animationDelay = Math.min(i, 12) * 90 + 'ms';
-      card.appendChild(h('h3', null, m.type === 'doubles' ? 'Doubles ' + (++dn) : 'Singles'));
+      if (m.type === 'doubles') dn++;
+      card.appendChild(h('h3', null, matchTitle(r, m, i, dn)));
       var sides = h('div', 'sides');
       ['a', 'b'].forEach(function (side, k) {
         var cls = 'side ' + side + (m.winner === side ? ' win' : '') + (m.winner && m.winner !== side ? ' lose' : '');
@@ -227,11 +366,13 @@
       card.appendChild(sides);
       box.appendChild(card);
     });
-    if (r.sitting.length) {
+    if (r.waiting.length) {
       var c = h('article', 'match sitcard' + (animate ? ' enter' : ''));
       if (animate) c.style.animationDelay = Math.min(r.matches.length, 12) * 90 + 'ms';
-      c.appendChild(h('h3', null, 'Sitting out'));
-      c.appendChild(h('p', null, r.sitting[0].name + ' rests this round.'));
+      var one = r.waiting.length === 1;
+      c.appendChild(h('h3', null, r.courts > 0 ? 'Waiting' : 'Sitting out'));
+      if (one) c.appendChild(h('p', null, r.waiting[0].name + (r.courts > 0 ? ' waits this round and plays next.' : ' rests this round.')));
+      else c.appendChild(h('p', null, 'In line, first up first: ' + r.waiting.map(function (p) { return p.name; }).join(', ') + '.'));
       box.appendChild(c);
     }
     if (r.matches.length) box.insertBefore(h('p', 'muted hint', 'Tap the winning side to log a result. Tap again to undo.'), box.firstChild);
@@ -457,13 +598,8 @@
   });
 
   $('shuffle').addEventListener('click', function () {
-    var round = P.buildRound();
-    if (!round) return;
-    launch($('shuffle'), 'pill');
-    $('shuffleLbl').textContent = 'Shuffle again';
-    renderResults(true);
-    var first = $('results').firstChild;
-    if (first && first.scrollIntoView) first.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    var r = P.state().round;
+    runRound(r && !P.hasResults() ? 'redeal' : 'next');
   });
 
   $('statSeg').addEventListener('click', function (e) {
@@ -528,7 +664,8 @@
     if (!window.confirm('Clear who is here today and the current shuffle on this device?')) return;
     P.resetLocal();
     seen = {};
-    $('shuffleLbl').textContent = 'Shuffle teams';
+    editing = false;
+    picked = null;
     renderAll(); renderResults(false);
     toast('Lineup reset');
   });
@@ -548,9 +685,10 @@
   }
   function sync() { return P.refresh().then(afterRefresh); }
 
+  buildCourts();
+  buildSkip();
   renderAll();
   renderResults(false);
-  if (P.state().round) $('shuffleLbl').textContent = 'Shuffle again';
   var start = location.hash.slice(1);
   show(TABS.indexOf(start) >= 0 ? start : 'play', false);
   sync();
