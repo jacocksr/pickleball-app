@@ -7,9 +7,13 @@
   var BOUNCE_MIN = 40, STEP = 1 / 240, ITER = 5, SLOP = 0.2, PUSH = 0.8;
   var REST_V = 50, REST_W = 40, ROLL_K = 4, ROLL_DEC = 280, SPIN_K = 4;
   var WAKE_V = 80, SWIPE_R = 16, MAX_V = 2200, MIN_SWIPE = 150;
-  var BTN_DELAY = 1000, DWELL = 0.5, BLAST = 3400, LIFT = 1200, MAXB = 3600;
-  var BOMB_R = 26, BOMB_M = 60, BOMB_GRAV = 4500, BOMB_V = 500, SINK_S = 2, UPBIAS = 0.3;
-  var BOMB_E = 0.2, BOMB_BOUNCES = 2, BOMB_MIN_V = 150;
+  var BTN_DELAY = 1000, HOLD_MS = 1500, BLAST = 3400, LIFT = 1200, MAXB = 3600;
+  var BOMB_R = 26, BOMB_M = 60, BOMB_GRAV = 6000, BOMB_V = 2000, UPBIAS = 0.3;
+  var PALETTE = [
+    { body: '#f7d117', ink: '#6b5500' },
+    { body: '#f58a1f', ink: '#6e3300' },
+    { body: '#4cb944', ink: '#1f5a1a' }
+  ];
   var taps = [], running = false, show = null;
 
   dock.addEventListener('click', function (e) {
@@ -49,24 +53,22 @@
     cv.height = Math.round(H * dpr);
     document.body.appendChild(cv);
     var ctx = cv.getContext('2d');
-    var cs = getComputedStyle(document.documentElement);
-    var brand = cs.getPropertyValue('--brand').trim() || '#14935a';
-    var fill = cs.getPropertyValue('--card').trim() || '#ffffff';
     var dots = [[12, 7.2], [7.6, 10], [16.4, 10], [12, 12], [8.4, 15], [15.6, 15], [12, 16.8]];
     var prevTouch = document.documentElement.style.touchAction;
     document.documentElement.style.touchAction = 'none';
 
     var balls = [], bombs = [], fxs = [], btns = [], box = null, btnArmed = true, ceilOn = false;
-    var t0 = performance.now(), last = t0, floorOn = true, calm = 0, acc = 0, raf = 0, lp = null, simT = 0, setAt = 0;
+    var t0 = performance.now(), last = t0, floorOn = true, calm = 0, acc = 0, raf = 0, lp = null, simT = 0, setAt = 0, holdUntil = 0;
 
     function spawnSet(base) {
       for (var i = 0; i < COUNT; i++) {
-        var r = 13 + Math.random() * 8;
+        var r = 13 + Math.random() * 8, c = PALETTE[Math.floor(Math.random() * PALETTE.length)];
         balls.push({
           x: r + Math.random() * Math.max(1, W - 2 * r), y: -r - Math.random() * 60,
           vx: (Math.random() - 0.5) * 240, vy: Math.random() * 200,
           r: r, m: r * r, a: Math.random() * 6.28, w: (Math.random() - 0.5) * 6,
           at: base + (i * SPAWN) / COUNT + Math.random() * 40,
+          body: c.body, ink: c.ink,
           live: false, gone: false, floor: false, touch: false, sleep: false, rest: 0, freed: false, bomb: false
         });
       }
@@ -77,7 +79,7 @@
       add: function () {
         var el = performance.now() - t0;
         show.sets++;
-        setAt = el; calm = 0; btnArmed = true; ceilOn = false;
+        setAt = el; calm = 0; btnArmed = true; ceilOn = false; holdUntil = 0;
         spawnSet(el);
         if (!floorOn) {
           floorOn = true;
@@ -134,11 +136,8 @@
           b.y = H - b.r;
           var jn = 0;
           if (b.vy > 0) {
-            var e = bounce(E_FLOOR, b.vy);
-            if (b.bomb) {
-              if (b.vy > BOMB_MIN_V && b.bounces < BOMB_BOUNCES) { e = BOMB_E; b.bounces++; }
-              else { e = 0; if (b.hitAt === null) b.hitAt = simT; }
-            }
+            var e = b.bomb ? 0 : bounce(E_FLOOR, b.vy);
+            if (b.bomb && b.hitAt === null) b.hitAt = simT;
             jn = (1 + e) * b.vy * b.m;
             b.vy = -e * b.vy;
           }
@@ -274,8 +273,8 @@
       for (i = 0; i < add; i++) {
         el = document.createElement('button');
         el.type = 'button';
-        el.textContent = 'TNT \uD83D\uDCA5';
-        el.setAttribute('aria-label', 'Drop a pickleball bomb');
+        el.textContent = 'Spike';
+        el.setAttribute('aria-label', 'Spike a pickleball bomb');
         el.style.cssText = 'padding:.6rem 1.05rem;border-radius:999px;border:2px solid #fff;background:#d92d20;color:#fff;font-family:inherit;font-weight:800;font-size:1rem;letter-spacing:.06em;box-shadow:0 6px 18px rgba(217,45,32,.5);cursor:pointer;touch-action:manipulation;pointer-events:auto';
         el.addEventListener('click', pressBtn.bind(null, el));
         box.appendChild(el);
@@ -284,20 +283,21 @@
       }
     }
 
+    /* A spike: the bomb is driven straight down from above the screen, plows through the pile, and goes off
+       the moment it touches the floor. */
     function dropBomb() {
-      var r = BOMB_R, d = H + 10, g = BOMB_GRAV;
-      var tFall = (-BOMB_V + Math.sqrt(BOMB_V * BOMB_V + 2 * g * d)) / g;
+      var r = BOMB_R;
       var b = {
-        x: W * 0.2 + Math.random() * W * 0.6, y: -r - 10, vx: (Math.random() - 0.5) * 60, vy: BOMB_V,
+        x: W * 0.2 + Math.random() * W * 0.6, y: -r - 10, vx: (Math.random() - 0.5) * 160, vy: BOMB_V,
         r: r, m: BOMB_M * r * r, a: 0, w: 0, at: 0, live: true, gone: false, floor: false, touch: false,
-        sleep: false, rest: 0, freed: false, bomb: true, hitAt: null, bounces: 0, born: simT, fuse: tFall + SINK_S
+        sleep: false, rest: 0, freed: false, bomb: true, hitAt: null
       };
       bombs.push(b);
       balls.push(b);
     }
 
-    /* Every bomb lands, bounces and burns down on its own. The floor only opens when the last bomb goes off,
-       so the others still have a floor to land on. */
+    /* Each bomb explodes on its own at impact. The floor stays for HOLD_MS after the last impact so more spikes
+       and triggers can land, then it opens. */
     function explode(b, now) {
       var bx = b.x, by = b.y, reach = Math.max(W, H) * 0.9;
       var at = bombs.indexOf(b);
@@ -305,7 +305,7 @@
       b.gone = true;
       calm = 0;
       ceilOn = true;
-      if (!bombs.length) floorOn = false;
+      holdUntil = (now - t0) + HOLD_MS;
       setAt = (now - t0) - SPAWN;
       balls.forEach(function (o) {
         if (o.gone || !o.live || o.bomb) return;
@@ -334,17 +334,31 @@
       ctx.translate(-12, -12);
       ctx.beginPath();
       ctx.arc(12, 12, 9, 0, 6.2832);
-      ctx.fillStyle = fill;
+      ctx.fillStyle = b.body;
       ctx.fill();
       ctx.lineWidth = 1.7;
-      ctx.strokeStyle = brand;
+      ctx.strokeStyle = b.ink;
       ctx.stroke();
-      ctx.fillStyle = brand;
+      ctx.fillStyle = b.ink;
       dots.forEach(function (p) { ctx.beginPath(); ctx.arc(p[0], p[1], 1.3, 0, 6.2832); ctx.fill(); });
       ctx.restore();
     }
 
     function drawBomb(b) {
+      var sp = Math.hypot(b.vx, b.vy), len = Math.min(sp * 0.05, 140);
+      if (len > 8) {
+        var tx = b.x - (b.vx / sp) * len, ty = b.y - (b.vy / sp) * len;
+        var g = ctx.createLinearGradient(b.x, b.y, tx, ty);
+        g.addColorStop(0, 'rgba(255,140,30,0.85)');
+        g.addColorStop(1, 'rgba(255,140,30,0)');
+        ctx.strokeStyle = g;
+        ctx.lineWidth = b.r * 1.4;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(b.x, b.y);
+        ctx.lineTo(tx, ty);
+        ctx.stroke();
+      }
       var s = b.r / 9;
       ctx.save();
       ctx.translate(b.x, b.y);
@@ -361,23 +375,6 @@
       ctx.fillStyle = '#7f8fa8';
       dots.forEach(function (p) { ctx.beginPath(); ctx.arc(p[0], p[1], 1.3, 0, 6.2832); ctx.fill(); });
       ctx.restore();
-      var burn = Math.min(1, (simT - b.born) / b.fuse);
-      if (b.hitAt !== null) burn = Math.max(burn, 0.6 + 0.4 * Math.min(1, (simT - b.hitAt) / DWELL));
-      var len = 1 - burn;
-      var x0 = b.x + b.r * 0.25, y0 = b.y - b.r * 0.95;
-      var ex = x0 + b.r * 0.5 * len, ey = y0 - b.r * 0.9 * len;
-      ctx.strokeStyle = '#c9a66b';
-      ctx.lineWidth = Math.max(2, b.r * 0.12);
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(x0, y0);
-      ctx.quadraticCurveTo(x0 + b.r * 0.05, y0 - b.r * 0.6 * len, ex, ey);
-      ctx.stroke();
-      var rr = b.r * (0.22 + 0.12 * Math.random());
-      ctx.fillStyle = Math.random() < 0.5 ? '#ffd23f' : '#ff7a1a';
-      ctx.beginPath(); ctx.arc(ex, ey, rr, 0, 6.2832); ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath(); ctx.arc(ex, ey, rr * 0.45, 0, 6.2832); ctx.fill();
     }
 
     function drawFx(f, now) {
@@ -421,12 +418,14 @@
       while (acc >= STEP) { step(STEP, el); acc -= STEP; }
       bombs.slice().forEach(function (o) {
         if (o.gone) { var i = bombs.indexOf(o); if (i >= 0) bombs.splice(i, 1); return; }
-        if ((o.hitAt !== null && simT - o.hitAt >= DWELL) || simT - o.born >= o.fuse) explode(o, now);
+        if (o.hitAt !== null) explode(o, now);
       });
       if (floorOn && btnArmed && (btns.length || el - setAt > BTN_DELAY)) showBtns();
       if (btns.length && !floorOn) hideBtns(true);
       if (floorOn && !bombs.length) {
-        if (el - setAt > FLOOR_MAX) openFloor();
+        if (holdUntil) {
+          if (el >= holdUntil) openFloor();
+        } else if (el - setAt > FLOOR_MAX) openFloor();
         else if (el > setAt + SPAWN + 300) {
           var busy = false;
           for (k = 0; k < balls.length; k++) {
