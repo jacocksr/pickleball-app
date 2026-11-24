@@ -9,6 +9,11 @@
   var WAKE_V = 80, SWIPE_R = 16, MAX_V = 2200, MIN_SWIPE = 150;
   var BTN_DELAY = 1000, HOLD_MS = 1500, BLAST = 3400, LIFT = 1200, MAXB = 3600;
   var BOMB_R = 26, BOMB_M = 60, BOMB_GRAV = 6000, BOMB_V = 2000, UPBIAS = 0.3;
+  var PALETTE = [
+    { body: '#f7d117', ink: '#6b5500' },
+    { body: '#f58a1f', ink: '#6e3300' },
+    { body: '#4cb944', ink: '#1f5a1a' }
+  ];
   var taps = [], running = false, show = null;
 
   dock.addEventListener('click', function (e) {
@@ -57,13 +62,13 @@
 
     function spawnSet(base) {
       for (var i = 0; i < COUNT; i++) {
-        var r = 13 + Math.random() * 8, hue = Math.floor(Math.random() * 360);
+        var r = 13 + Math.random() * 8, c = PALETTE[Math.floor(Math.random() * PALETTE.length)];
         balls.push({
           x: r + Math.random() * Math.max(1, W - 2 * r), y: -r - Math.random() * 60,
           vx: (Math.random() - 0.5) * 240, vy: Math.random() * 200,
           r: r, m: r * r, a: Math.random() * 6.28, w: (Math.random() - 0.5) * 6,
           at: base + (i * SPAWN) / COUNT + Math.random() * 40,
-          body: 'hsl(' + hue + ',85%,58%)', ink: 'hsl(' + hue + ',70%,26%)',
+          body: c.body, ink: c.ink,
           live: false, gone: false, floor: false, touch: false, sleep: false, rest: 0, freed: false, bomb: false
         });
       }
