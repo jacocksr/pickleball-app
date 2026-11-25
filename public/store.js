@@ -14,7 +14,7 @@
   }
 
   function blank() {
-    return { token: rid(24), here: {}, sits: {}, streak: {}, rank: {}, snap: null, courts: 0, round: null, players: [], games: [], admin: null, adminOn: false, editId: null, windowMin: 120 };
+    return { token: rid(24), here: {}, sits: {}, streak: {}, rank: {}, snap: null, courts: 0, twoOne: false, round: null, players: [], games: [], admin: null, adminOn: false, editId: null, windowMin: 120 };
   }
 
   function load() {
@@ -29,6 +29,7 @@
         s.rank = d.rank || {};
         s.snap = d.snap || null;
         s.courts = d.courts >= 0 && d.courts <= MAX_COURTS ? Math.floor(d.courts) : 0;
+        s.twoOne = !!d.twoOne;
         s.round = d.round || null;
         if (s.round && !s.round.waiting) s.round.waiting = s.round.sitting || [];
         if (s.round && !(s.round.courts >= 0)) s.round.courts = 0;
@@ -45,7 +46,7 @@
 
   function save() {
     try {
-      localStorage.setItem(KEY, JSON.stringify({ token: S.token, here: S.here, sits: S.sits, streak: S.streak, rank: S.rank, snap: S.snap, courts: S.courts, round: S.round, players: S.players, games: S.games, admin: S.admin }));
+      localStorage.setItem(KEY, JSON.stringify({ token: S.token, here: S.here, sits: S.sits, streak: S.streak, rank: S.rank, snap: S.snap, courts: S.courts, twoOne: S.twoOne, round: S.round, players: S.players, games: S.games, admin: S.admin }));
     } catch (e) {}
   }
 
@@ -169,11 +170,20 @@
     return n;
   }
 
+  /* The 2 vs 1 option. With 3, 7, 11... players the usual plan is doubles, one singles match and one person
+     waiting. The option turns that singles match and the waiter into one 2 vs 1 match so everyone plays.
+     It needs one more court than the doubles matches use, when courts are limited. */
+  function canTwoOne(n, c) { return n % 4 === 3 && (!(c > 0) || c >= Math.floor(n / 4) + 1); }
+  function twoOne() { return !!S.twoOne; }
+  function setTwoOne(v) { S.twoOne = !!v; save(); return S.twoOne; }
+
   /* How many play, given the head count and the courts. 0 courts means no limit. */
-  function plan(n, c) {
+  function plan(n, c, t) {
+    if (t === undefined) t = S.twoOne;
+    if (t && canTwoOne(n, c)) return { play: n, doubles: Math.floor(n / 4), singles: 0, twoOne: 1, waiting: 0 };
     var cap = c > 0 ? c * 4 : Infinity;
     var p = n > cap ? cap : n - (n % 2);
-    return { play: p, doubles: Math.floor(p / 4), singles: p % 4 >= 2 ? 1 : 0, waiting: n - p };
+    return { play: p, doubles: Math.floor(p / 4), singles: p % 4 >= 2 ? 1 : 0, twoOne: 0, waiting: n - p };
   }
 
   /* Who plays first: longest wait in a row, then most waits today, then place in line, then luck. */
@@ -192,13 +202,14 @@
     return keyed.map(function (k) { return k.p; });
   }
 
-  function deal(playing) {
+  function deal(playing, three) {
     var pool = shuffle(playing), matches = [], f;
     while (pool.length >= 4) {
       f = pool.splice(0, 4);
       matches.push({ id: rid(12), type: 'doubles', a: [f[0], f[1]], b: [f[2], f[3]], winner: null });
     }
-    if (pool.length === 2) matches.push({ id: rid(12), type: 'singles', a: [pool[0]], b: [pool[1]], winner: null });
+    if (pool.length === 3 && three) matches.push({ id: rid(12), type: 'twoone', a: [pool[0], pool[1]], b: [pool[2]], winner: null });
+    else if (pool.length === 2) matches.push({ id: rid(12), type: 'singles', a: [pool[0]], b: [pool[1]], winner: null });
     return matches;
   }
 
@@ -217,7 +228,7 @@
     });
     waiting = order(waiting);
     waiting.forEach(function (p, i) { S.rank[p.id] = i; });
-    S.round = { id: rid(12), courts: S.courts, matches: deal(playing), waiting: waiting };
+    S.round = { id: rid(12), courts: S.courts, matches: deal(playing, pl.twoOne > 0), waiting: waiting };
     save();
     return S.round;
   }
@@ -235,9 +246,9 @@
       S.sits = copy(S.snap.sits); S.streak = copy(S.snap.streak); S.rank = copy(S.snap.rank);
       return nextRound();
     }
-    var playing = [];
+    var playing = [], had = r.matches.some(function (m) { return m.type === 'twoone'; });
     r.matches.forEach(function (m) { m.a.concat(m.b).forEach(function (p) { playing.push(p); }); });
-    r.matches = deal(playing);
+    r.matches = deal(playing, had);
     r.edited = false;
     save();
     return r;
@@ -290,9 +301,11 @@
     S.games.unshift(g);
   }
 
+  /* A 2 vs 1 match is played for fun. The shared stats only take 1 v 1 and 2 v 2 games, so it is never logged. */
   function setWinner(matchId, side) {
     var m = S.round && S.round.matches.filter(function (x) { return x.id === matchId; })[0];
     if (!m) return Promise.resolve({ ok: false, msg: 'Match not found.' });
+    if (m.type === 'twoone') return Promise.resolve({ ok: false, msg: '2 vs 1 matches are for fun and are not added to stats.' });
     var req;
     if (m.winner === side) {
       req = api('/api/games/delete', { id: m.id }).then(function () {
@@ -384,7 +397,8 @@
   window.PB = { store: {
     MIN: MIN, MAX_COURTS: MAX_COURTS, state: function () { return S; }, sig: sig, refresh: refresh,
     here: here, away: away, addPlayer: addPlayer, setHere: setHere, clearToday: clearToday, removePlayer: removePlayer, resetLocal: resetLocal,
-    courts: courts, setCourts: setCourts, plan: plan, nextRound: nextRound, redeal: redeal, swap: swap, hasResults: hasResults, buildRound: nextRound,
+    courts: courts, setCourts: setCourts, twoOne: twoOne, setTwoOne: setTwoOne, canTwoOne: canTwoOne,
+    plan: plan, nextRound: nextRound, redeal: redeal, swap: swap, hasResults: hasResults, buildRound: nextRound,
     setWinner: setWinner, deleteGame: deleteGame, flipGame: flipGame, canEdit: canEdit, stats: stats,
     isAdmin: function () { return S.adminOn; }, editMinutes: function () { return S.windowMin; },
     adminLogin: adminLogin, adminLogout: adminLogout, importBackup: importBackup, importLocalOld: importLocalOld, exportJSON: exportJSON
