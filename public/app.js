@@ -603,9 +603,27 @@
   dock.querySelector('.play').addEventListener('click', function () { launch(dock.querySelector('.bubble'), 'dock'); });
 
   /* ---------- Settings ---------- */
-  var gear = $('gear'), pop = $('settings');
-  function setPop(open) { pop.hidden = !open; gear.setAttribute('aria-expanded', open ? 'true' : 'false'); }
-  gear.addEventListener('click', function (e) { e.stopPropagation(); setPop(pop.hidden); });
+  var gear = $('gear'), pop = $('settings'), popAnim = null;
+  function setPop(open) {
+    gear.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) {
+      if (popAnim) { popAnim.cancel(); popAnim = null; }
+      pop.hidden = false;
+      return;
+    }
+    if (pop.hidden || popAnim) return;
+    if (!pop.animate || (calm && calm.matches)) { pop.hidden = true; return; }
+    /* The pop-in played backwards: same length, mirrored easing, same top-right corner. */
+    var a = pop.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(0.9)' }], { duration: 220, easing: 'cubic-bezier(.8,0,.6,.9)', fill: 'forwards' });
+    popAnim = a;
+    a.onfinish = function () {
+      if (popAnim !== a) return;
+      popAnim = null;
+      pop.hidden = true;
+      a.cancel();
+    };
+  }
+  gear.addEventListener('click', function (e) { e.stopPropagation(); setPop(pop.hidden || !!popAnim); });
   document.addEventListener('click', function (e) { if (!pop.hidden && !pop.contains(e.target)) setPop(false); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') setPop(false); });
   function markTheme() {
