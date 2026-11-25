@@ -40,6 +40,7 @@
     t = Math.max(0, Math.min(1, t));
     return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
   }
+  function stop(a) { if (a) { try { a.cancel(); } catch (e) {} } }
 
   function start() {
     if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -57,7 +58,7 @@
     var prevTouch = document.documentElement.style.touchAction;
     document.documentElement.style.touchAction = 'none';
 
-    var balls = [], bombs = [], fxs = [], btns = [], box = null, btnArmed = true, ceilOn = false;
+    var balls = [], bombs = [], fxs = [], btns = [], leaving = [], box = null, btnArmed = true, ceilOn = false;
     var t0 = performance.now(), last = t0, floorOn = true, calm = 0, acc = 0, raf = 0, lp = null, simT = 0, setAt = 0, holdUntil = 0;
 
     function spawnSet(base) {
@@ -233,7 +234,10 @@
     }
 
     /* The button count follows the trigger count: trigger 1 shows 1, trigger 2 shows 2, and so on up to 10.
-       A new trigger tops up the buttons already on screen instead of waiting for them to clear. */
+       A new trigger tops up the buttons already on screen instead of waiting for them to clear.
+       The stack is anchored 25% of the screen height above the bottom and grows upward, then wraps left.
+       Each button sits in a slot. Slots take part in the layout and slide to close gaps; the button inside
+       runs the entrance and exit animations, so the two never fight over the same transform. */
     function hideBtns(slide) {
       var list = btns, wrap = box;
       btns = [];
@@ -246,40 +250,75 @@
       });
       setTimeout(function () { if (wrap && wrap.parentNode) wrap.parentNode.removeChild(wrap); }, slide ? 440 + list.length * 30 : 220);
     }
+    function dropLeaving(slot) {
+      if (slot.parentNode) slot.parentNode.removeChild(slot);
+      leaving = leaving.filter(function (l) { return l.el !== slot; });
+    }
     function pressBtn(el) {
       var at = btns.indexOf(el);
       if (at < 0) return;
+      var slot = el._slot, can = !!el.animate, first = [], i, pr, cs, fromT = 'none', fromO = '1', dx, dy, r, rects;
       btns.splice(at, 1);
       el.style.pointerEvents = 'none';
-      if (el.animate) el.animate([{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(0.6)' }], { duration: 180, fill: 'forwards' });
-      setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 200);
+      /* First: where everything is on screen right now, including any slide still in progress. */
+      for (i = 0; i < btns.length; i++) first.push(btns[i]._slot.getBoundingClientRect());
+      pr = slot.getBoundingClientRect();
+      if (can) { cs = getComputedStyle(el); fromT = cs.transform; fromO = cs.opacity; }
+      stop(el._in);
+      stop(slot._flip);
+      /* The pressed slot leaves the layout immediately and plays its exit where it stands. */
+      slot.style.cssText = 'position:fixed;left:' + pr.left + 'px;top:' + pr.top + 'px;width:' + pr.width + 'px;height:' + pr.height + 'px;margin:0;display:flex;z-index:61;pointer-events:none';
+      document.body.appendChild(slot);
+      if (can) {
+        el.animate([{ transform: fromT, opacity: fromO }, { transform: 'scale(0.6)', opacity: 0 }], { duration: 180, fill: 'forwards' });
+        leaving.push({ el: slot, t: setTimeout(function () { dropLeaving(slot); }, 200) });
+      } else if (slot.parentNode) {
+        slot.parentNode.removeChild(slot);
+      }
+      /* Last: where each survivor belongs now. Slide from the first position to the last one. */
+      for (i = 0; i < btns.length; i++) stop(btns[i]._slot._flip);
+      rects = [];
+      for (i = 0; i < btns.length; i++) rects.push(btns[i]._slot.getBoundingClientRect());
+      if (can) {
+        for (i = 0; i < btns.length; i++) {
+          r = rects[i];
+          dx = first[i].left - r.left;
+          dy = first[i].top - r.top;
+          if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
+          btns[i]._slot._flip = btns[i]._slot.animate([{ transform: 'translate(' + dx + 'px,' + dy + 'px)' }, { transform: 'translate(0px,0px)' }], { duration: 240, easing: 'cubic-bezier(.22,.61,.36,1)' });
+        }
+      }
       if (!btns.length && box) {
         var wrap = box;
         box = null;
-        setTimeout(function () { if (wrap.parentNode) wrap.parentNode.removeChild(wrap); }, 220);
+        if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
       }
       dropBomb();
     }
     function showBtns() {
       var n = Math.max(1, Math.min(show ? show.sets : 1, MAX_SETS));
-      var add = n - btns.length, i, el;
+      var add = n - btns.length, i, el, slot;
       btnArmed = false;
       if (add <= 0) return;
       if (!box) {
         box = document.createElement('div');
-        box.style.cssText = 'position:fixed;right:12px;top:24%;z-index:61;display:flex;flex-direction:column;flex-wrap:wrap-reverse;align-items:flex-end;gap:8px;max-height:56vh;pointer-events:none';
+        box.style.cssText = 'position:fixed;right:12px;bottom:25%;z-index:61;display:flex;flex-direction:column-reverse;flex-wrap:wrap-reverse;align-items:flex-end;gap:8px;max-height:calc(75vh - 12px);pointer-events:none';
         document.body.appendChild(box);
       }
       for (i = 0; i < add; i++) {
+        slot = document.createElement('div');
+        slot.style.cssText = 'display:flex;flex:none';
         el = document.createElement('button');
         el.type = 'button';
         el.textContent = 'Spike';
         el.setAttribute('aria-label', 'Spike a pickleball bomb');
-        el.style.cssText = 'padding:.6rem 1.05rem;border-radius:999px;border:2px solid #fff;background:#d92d20;color:#fff;font-family:inherit;font-weight:800;font-size:1rem;letter-spacing:.06em;box-shadow:0 6px 18px rgba(217,45,32,.5);cursor:pointer;touch-action:manipulation;pointer-events:auto';
+        el.style.cssText = 'flex:none;padding:.6rem 1.05rem;border-radius:999px;border:2px solid #fff;background:#d92d20;color:#fff;font-family:inherit;font-weight:800;font-size:1rem;letter-spacing:.06em;box-shadow:0 6px 18px rgba(217,45,32,.5);cursor:pointer;touch-action:manipulation;pointer-events:auto';
         el.addEventListener('click', pressBtn.bind(null, el));
-        box.appendChild(el);
+        el._slot = slot;
+        slot.appendChild(el);
+        box.appendChild(slot);
         btns.push(el);
-        if (el.animate) el.animate([{ transform: 'scale(0) rotate(-12deg)', opacity: 0 }, { transform: 'scale(1.15) rotate(3deg)', opacity: 1, offset: 0.7 }, { transform: 'scale(1) rotate(0deg)', opacity: 1 }], { duration: 420, delay: i * 60, easing: 'cubic-bezier(.3,1.4,.5,1)', fill: 'both' });
+        if (el.animate) el._in = el.animate([{ transform: 'scale(0) rotate(-12deg)', opacity: 0 }, { transform: 'scale(1.15) rotate(3deg)', opacity: 1, offset: 0.7 }, { transform: 'scale(1) rotate(0deg)', opacity: 1 }], { duration: 420, delay: i * 60, easing: 'cubic-bezier(.3,1.4,.5,1)', fill: 'both' });
       }
     }
 
@@ -405,6 +444,11 @@
       if (box && box.parentNode) box.parentNode.removeChild(box);
       box = null;
       btns = [];
+      leaving.forEach(function (l) {
+        clearTimeout(l.t);
+        if (l.el.parentNode) l.el.parentNode.removeChild(l.el);
+      });
+      leaving = [];
       if (cv.parentNode) cv.parentNode.removeChild(cv);
       show = null;
       running = false;
