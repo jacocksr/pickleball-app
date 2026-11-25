@@ -142,6 +142,7 @@
     var n = here.length;
     $('count').textContent = count(n, 'player', 'players');
     renderCourts();
+    renderTwoOne();
 
     var list = $('chips');
     list.innerHTML = '';
@@ -189,6 +190,7 @@
     } else {
       var pl = P.plan(n, P.courts()), parts = [];
       if (pl.doubles) parts.push(count(pl.doubles, 'doubles match', 'doubles matches'));
+      if (pl.twoOne) parts.push('1 match of 2 vs 1');
       if (pl.singles) parts.push('1 singles match');
       if (pl.waiting) parts.push(pl.waiting + ' waiting');
       pv.textContent = parts.join(' \u00b7 ');
@@ -224,6 +226,36 @@
     $('courtsVal').textContent = c ? count(c, 'court', 'courts') : 'No limit';
     $('courtsDown').disabled = c <= 0;
     $('courtsUp').disabled = c >= P.MAX_COURTS;
+  }
+
+  /* With 3, 7, 11... players, a switch turns "singles plus one waiting" into one match of 2 vs 1 so
+     everyone plays. It only shows when it would change the plan. */
+  function buildTwoOne() {
+    var box = h('div', 'courts row');
+    box.id = 'twoOneRow';
+    box.appendChild(h('span', 'muted', 'Play 2 vs 1 so no one waits'));
+    var sw = h('label', 'switch');
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.id = 'twoOneCb';
+    cb.setAttribute('aria-label', 'Play one match of 2 vs 1 so no one waits, instead of singles with one player waiting');
+    cb.addEventListener('change', function () {
+      P.setTwoOne(cb.checked);
+      renderPlay();
+      var r = P.state().round;
+      if (r && !P.hasResults()) toast('Tap Re-deal teams to use this.');
+    });
+    sw.appendChild(cb);
+    sw.appendChild(h('span', 'slider'));
+    box.appendChild(sw);
+    var pv = $('preview');
+    pv.parentNode.insertBefore(box, pv);
+  }
+
+  function renderTwoOne() {
+    var ok = P.canTwoOne(P.here().length, P.courts());
+    $('twoOneRow').style.display = ok ? '' : 'none';
+    $('twoOneCb').checked = P.twoOne();
   }
 
   function buildSkip() {
@@ -272,9 +304,9 @@
   }
 
   function matchTitle(r, m, i, dn) {
-    var kind = m.type === 'doubles' ? 'Doubles' : 'Singles';
+    var kind = m.type === 'doubles' ? 'Doubles' : (m.type === 'twoone' ? '2 vs 1' : 'Singles');
     if (r.courts > 0) return 'Court ' + (i + 1) + ' \u00b7 ' + kind;
-    return m.type === 'doubles' ? 'Doubles ' + dn : 'Singles';
+    return m.type === 'doubles' ? 'Doubles ' + dn : kind;
   }
 
   function pickBtn(p) {
@@ -343,6 +375,13 @@
       card.appendChild(h('h3', null, matchTitle(r, m, i, dn)));
       var sides = h('div', 'sides');
       ['a', 'b'].forEach(function (side, k) {
+        if (m.type === 'twoone') {
+          var col = h('div', 'side ' + side);
+          m[side].forEach(function (p) { col.appendChild(h('span', null, p.name)); });
+          sides.appendChild(col);
+          if (k === 0) sides.appendChild(h('div', 'vs', 'vs'));
+          return;
+        }
         var cls = 'side ' + side + (m.winner === side ? ' win' : '') + (m.winner && m.winner !== side ? ' lose' : '');
         var b = h('button', cls);
         b.type = 'button';
@@ -364,6 +403,7 @@
         if (k === 0) sides.appendChild(h('div', 'vs', 'vs'));
       });
       card.appendChild(sides);
+      if (m.type === 'twoone') card.appendChild(h('p', 'muted hint', 'Just for fun. 2 vs 1 games are not added to stats.'));
       box.appendChild(card);
     });
     if (r.waiting.length) {
@@ -375,7 +415,7 @@
       else c.appendChild(h('p', null, 'In line, first up first: ' + r.waiting.map(function (p) { return p.name; }).join(', ') + '.'));
       box.appendChild(c);
     }
-    if (r.matches.length) box.insertBefore(h('p', 'muted hint', 'Tap the winning side to log a result. Tap again to undo.'), box.firstChild);
+    if (r.matches.some(function (m) { return m.type !== 'twoone'; })) box.insertBefore(h('p', 'muted hint', 'Tap the winning side to log a result. Tap again to undo.'), box.firstChild);
   }
 
   /* ---------- Players ---------- */
@@ -563,9 +603,27 @@
   dock.querySelector('.play').addEventListener('click', function () { launch(dock.querySelector('.bubble'), 'dock'); });
 
   /* ---------- Settings ---------- */
-  var gear = $('gear'), pop = $('settings');
-  function setPop(open) { pop.hidden = !open; gear.setAttribute('aria-expanded', open ? 'true' : 'false'); }
-  gear.addEventListener('click', function (e) { e.stopPropagation(); setPop(pop.hidden); });
+  var gear = $('gear'), pop = $('settings'), popAnim = null;
+  function setPop(open) {
+    gear.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) {
+      if (popAnim) { popAnim.cancel(); popAnim = null; }
+      pop.hidden = false;
+      return;
+    }
+    if (pop.hidden || popAnim) return;
+    if (!pop.animate || (calm && calm.matches)) { pop.hidden = true; return; }
+    /* The pop-in played backwards: same length, mirrored easing, same top-right corner. */
+    var a = pop.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(0.9)' }], { duration: 220, easing: 'cubic-bezier(.8,0,.6,.9)', fill: 'forwards' });
+    popAnim = a;
+    a.onfinish = function () {
+      if (popAnim !== a) return;
+      popAnim = null;
+      pop.hidden = true;
+      a.cancel();
+    };
+  }
+  gear.addEventListener('click', function (e) { e.stopPropagation(); setPop(pop.hidden || !!popAnim); });
   document.addEventListener('click', function (e) { if (!pop.hidden && !pop.contains(e.target)) setPop(false); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') setPop(false); });
   function markTheme() {
@@ -686,6 +744,7 @@
   function sync() { return P.refresh().then(afterRefresh); }
 
   buildCourts();
+  buildTwoOne();
   buildSkip();
   renderAll();
   renderResults(false);
