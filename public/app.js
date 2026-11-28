@@ -649,10 +649,13 @@
   $('addForm').addEventListener('submit', function (e) { e.preventDefault(); submitPlayer('nameInput', 'msg'); });
   $('pForm').addEventListener('submit', function (e) { e.preventDefault(); submitPlayer('pName', 'pMsg'); });
 
+  /* Clear also wipes the shuffle on screen, so old matches can never come back. */
   $('clearToday').addEventListener('click', function () {
     P.clearToday();
+    editing = false;
+    picked = null;
     status($('msg'), '', true);
-    renderPlay(); renderRoster();
+    renderPlay(); renderRoster(); renderResults(false);
   });
 
   $('shuffle').addEventListener('click', function () {

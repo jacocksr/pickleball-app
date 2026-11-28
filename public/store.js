@@ -123,7 +123,8 @@
     return { ok: true, msg: '' };
   }
   function clearWaits() { S.sits = {}; S.streak = {}; S.rank = {}; S.snap = null; }
-  function clearToday() { S.here = {}; clearWaits(); applyHere(); save(); }
+  /* Clearing the lineup also drops the shuffle on screen, so an old round can never be re-dealt later. */
+  function clearToday() { S.here = {}; S.round = null; clearWaits(); applyHere(); save(); }
   function resetLocal() { S.here = {}; S.round = null; clearWaits(); applyHere(); save(); }
 
   function addPlayer(name) {
@@ -237,6 +238,14 @@
     return !!(S.round && S.round.matches.some(function (m) { return m.winner; }));
   }
 
+  /* True when the round on screen holds exactly the people marked here right now. */
+  function sameLineup(r) {
+    var inRound = {}, n = 0, h = here();
+    r.matches.forEach(function (m) { m.a.concat(m.b).forEach(function (p) { if (!inRound[p.id]) n++; inRound[p.id] = 1; }); });
+    r.waiting.forEach(function (p) { if (!inRound[p.id]) n++; inRound[p.id] = 1; });
+    return n === h.length && h.every(function (p) { return inRound[p.id]; });
+  }
+
   /* Plan this round again from the counts as they stood before it. Anyone who has to play still plays,
      and the rest of the waiting spots are drawn fresh, so nobody is passed over unfairly. */
   function redeal() {
@@ -246,6 +255,8 @@
       S.sits = copy(S.snap.sits); S.streak = copy(S.snap.streak); S.rank = copy(S.snap.rank);
       return nextRound();
     }
+    /* No saved counts and the lineup has changed: the old round is stale, so start from who is here now. */
+    if (!sameLineup(r)) return nextRound();
     var playing = [], had = r.matches.some(function (m) { return m.type === 'twoone'; });
     r.matches.forEach(function (m) { m.a.concat(m.b).forEach(function (p) { playing.push(p); }); });
     r.matches = deal(playing, had);
